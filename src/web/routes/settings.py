@@ -624,3 +624,74 @@ async def disable_proxy(proxy_id: int):
         if not proxy:
             raise HTTPException(status_code=404, detail="代理不存在")
         return {"success": True, "message": "代理已禁用"}
+
+
+# ============== CPA 设置 ==============
+
+class CPASettings(BaseModel):
+    """CPA 设置"""
+    enabled: bool = False
+    api_url: str = ""
+    api_token: str = ""
+
+
+class CPATestRequest(BaseModel):
+    """CPA 测试请求"""
+    api_url: str
+    api_token: str
+
+
+@router.get("/cpa")
+async def get_cpa_settings():
+    """获取 CPA 设置"""
+    settings = get_settings()
+
+    return {
+        "enabled": settings.cpa_enabled,
+        "api_url": settings.cpa_api_url,
+        "has_token": bool(settings.cpa_api_token and settings.cpa_api_token.get_secret_value()),
+    }
+
+
+@router.post("/cpa")
+async def update_cpa_settings(request: CPASettings):
+    """更新 CPA 设置"""
+    update_dict = {
+        "cpa_enabled": request.enabled,
+        "cpa_api_url": request.api_url,
+    }
+
+    # 只有提供了 token 才更新
+    if request.api_token:
+        update_dict["cpa_api_token"] = request.api_token
+
+    update_settings(**update_dict)
+
+    return {"success": True, "message": "CPA 设置已更新"}
+
+
+@router.post("/cpa/test")
+async def test_cpa_connection(request: CPATestRequest):
+    """测试 CPA 连接"""
+    from ...core.cpa_upload import test_cpa_connection as do_test
+
+    settings = get_settings()
+    proxy = settings.proxy_url
+
+    # 如果传入 'use_saved_token'，使用已保存的 token
+    api_token = request.api_token
+    if api_token == 'use_saved_token' or not api_token:
+        if settings.cpa_api_token:
+            api_token = settings.cpa_api_token.get_secret_value()
+        else:
+            return {
+                "success": False,
+                "message": "未配置 API Token"
+            }
+
+    success, message = do_test(request.api_url, api_token, proxy)
+
+    return {
+        "success": success,
+        "message": message
+    }

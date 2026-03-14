@@ -119,6 +119,11 @@ class Settings(BaseSettings):
         default=SecretStr("your-encryption-key-change-in-production")
     )
 
+    # CPA 上传配置
+    cpa_enabled: bool = Field(default=False)
+    cpa_api_url: str = Field(default="")  # 例如: https://cpa.example.com
+    cpa_api_token: SecretStr = Field(default=SecretStr(""))
+
 
 # 全局配置实例
 _settings: Optional[Settings] = None

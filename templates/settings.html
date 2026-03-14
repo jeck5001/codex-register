@@ -35,6 +35,7 @@
             <!-- 设置标签页 -->
             <div class="tabs">
                 <button class="tab-btn active" data-tab="proxy">🌐 代理设置</button>
+                <button class="tab-btn" data-tab="cpa">☁️ CPA上传</button>
                 <button class="tab-btn" data-tab="registration">⚙️ 注册配置</button>
                 <button class="tab-btn" data-tab="database">💾 数据库</button>
             </div>
@@ -180,6 +181,44 @@
                             <div class="form-actions">
                                 <button type="button" class="btn btn-secondary" id="cancel-proxy-btn">取消</button>
                                 <button type="submit" class="btn btn-primary">💾 保存</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CPA 上传设置 -->
+            <div class="tab-content" id="cpa-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>CPA 上传配置</h3>
+                        <span class="hint">配置 Codex Protocol API 上传功能</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="cpa-form">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="cpa-enabled" name="enabled">
+                                    启用 CPA 上传
+                                </label>
+                                <p class="hint">启用后可在账号管理页面上传账号到 CPA 管理平台</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="cpa-api-url">API URL</label>
+                                <input type="text" id="cpa-api-url" name="api_url" placeholder="例如: https://cpa.example.com">
+                                <p class="hint">CPA 管理平台的 API 地址</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="cpa-api-token">API Token</label>
+                                <input type="password" id="cpa-api-token" name="api_token" placeholder="留空则保持原值" autocomplete="new-password">
+                                <p class="hint">CPA 管理平台的认证 Token</p>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">💾 保存设置</button>
+                                <button type="button" class="btn btn-secondary" id="test-cpa-btn">🔌 测试连接</button>
                             </div>
                         </form>
                     </div>

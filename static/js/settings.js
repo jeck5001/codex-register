@@ -37,7 +37,10 @@ const elements = {
     proxyItemForm: document.getElementById('proxy-item-form'),
     closeProxyModal: document.getElementById('close-proxy-modal'),
     cancelProxyBtn: document.getElementById('cancel-proxy-btn'),
-    proxyModalTitle: document.getElementById('proxy-modal-title')
+    proxyModalTitle: document.getElementById('proxy-modal-title'),
+    // CPA 设置
+    cpaForm: document.getElementById('cpa-form'),
+    testCpaBtn: document.getElementById('test-cpa-btn')
 };
 
 // 选中的服务 ID
@@ -194,6 +197,15 @@ function initEventListeners() {
     if (elements.proxyItemForm) {
         elements.proxyItemForm.addEventListener('submit', handleSaveProxyItem);
     }
+
+    // CPA 设置
+    if (elements.cpaForm) {
+        elements.cpaForm.addEventListener('submit', handleSaveCpa);
+    }
+
+    if (elements.testCpaBtn) {
+        elements.testCpaBtn.addEventListener('click', handleTestCpa);
+    }
 }
 
 // 加载设置
@@ -214,6 +226,9 @@ async function loadSettings() {
         document.getElementById('password-length').value = data.registration?.default_password_length || 12;
         document.getElementById('sleep-min').value = data.registration?.sleep_min || 5;
         document.getElementById('sleep-max').value = data.registration?.sleep_max || 30;
+
+        // 加载 CPA 设置
+        loadCpaSettings();
 
     } catch (error) {
         console.error('加载设置失败:', error);
@@ -821,5 +836,86 @@ async function handleTestAllProxies() {
     } finally {
         elements.testAllProxiesBtn.disabled = false;
         elements.testAllProxiesBtn.textContent = '🔌 测试全部';
+    }
+}
+
+
+// ============================================================================
+// CPA 设置管理
+// ============================================================================
+
+// 加载 CPA 设置
+async function loadCpaSettings() {
+    try {
+        const data = await api.get('/settings/cpa');
+
+        document.getElementById('cpa-enabled').checked = data.enabled || false;
+        document.getElementById('cpa-api-url').value = data.api_url || '';
+        // 不填充 token，只显示是否有值
+        document.getElementById('cpa-api-token').value = '';
+        document.getElementById('cpa-api-token').placeholder = data.has_token ? '已配置，留空保持不变' : '请输入 API Token';
+
+    } catch (error) {
+        console.error('加载 CPA 设置失败:', error);
+    }
+}
+
+// 保存 CPA 设置
+async function handleSaveCpa(e) {
+    e.preventDefault();
+
+    const data = {
+        enabled: document.getElementById('cpa-enabled').checked,
+        api_url: document.getElementById('cpa-api-url').value,
+        api_token: document.getElementById('cpa-api-token').value || ''
+    };
+
+    try {
+        await api.post('/settings/cpa', data);
+        toast.success('CPA 设置已保存');
+        loadCpaSettings();
+    } catch (error) {
+        toast.error('保存失败: ' + error.message);
+    }
+}
+
+// 测试 CPA 连接
+async function handleTestCpa() {
+    const apiUrl = document.getElementById('cpa-api-url').value;
+    const apiToken = document.getElementById('cpa-api-token').value;
+
+    if (!apiUrl) {
+        toast.warning('请输入 API URL');
+        return;
+    }
+
+    // 如果 token 为空，尝试使用已保存的 token 进行测试
+    if (!apiToken) {
+        const cpaSettings = await api.get('/settings/cpa');
+        if (!cpaSettings.has_token) {
+            toast.warning('请输入 API Token');
+            return;
+        }
+    }
+
+    elements.testCpaBtn.disabled = true;
+    elements.testCpaBtn.innerHTML = '<span class="loading-spinner"></span> 测试中...';
+
+    try {
+        const result = await api.post('/settings/cpa/test', {
+            api_url: apiUrl,
+            api_token: apiToken || 'use_saved_token'
+        });
+
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+    } catch (error) {
+        toast.error('测试失败: ' + error.message);
+    } finally {
+        elements.testCpaBtn.disabled = false;
+        elements.testCpaBtn.textContent = '🔌 测试连接';
     }
 }

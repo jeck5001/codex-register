@@ -23,6 +23,7 @@ const elements = {
     refreshBtn: document.getElementById('refresh-btn'),
     batchRefreshBtn: document.getElementById('batch-refresh-btn'),
     batchValidateBtn: document.getElementById('batch-validate-btn'),
+    batchUploadCpaBtn: document.getElementById('batch-upload-cpa-btn'),
     batchDeleteBtn: document.getElementById('batch-delete-btn'),
     exportBtn: document.getElementById('export-btn'),
     exportMenu: document.getElementById('export-menu'),
@@ -40,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadStats();
     loadAccounts();
     initEventListeners();
+    updateBatchButtons();  // 初始化按钮状态
 });
 
 // 事件监听
@@ -82,6 +84,9 @@ function initEventListeners() {
 
     // 批量验证Token
     elements.batchValidateBtn.addEventListener('click', handleBatchValidate);
+
+    // 批量上传CPA
+    elements.batchUploadCpaBtn.addEventListener('click', handleBatchUploadCpa);
 
     // 批量删除
     elements.batchDeleteBtn.addEventListener('click', handleBatchDelete);
@@ -181,7 +186,7 @@ async function loadAccounts() {
     // 显示加载状态
     elements.table.innerHTML = `
         <tr>
-            <td colspan="8">
+            <td colspan="9">
                 <div class="empty-state">
                     <div class="skeleton skeleton-text" style="width: 60%;"></div>
                     <div class="skeleton skeleton-text" style="width: 80%;"></div>
@@ -217,7 +222,7 @@ async function loadAccounts() {
         console.error('加载账号列表失败:', error);
         elements.table.innerHTML = `
             <tr>
-                <td colspan="8">
+                <td colspan="9">
                     <div class="empty-state">
                         <div class="empty-state-icon">❌</div>
                         <div class="empty-state-title">加载失败</div>
@@ -236,7 +241,7 @@ function renderAccounts(accounts) {
     if (accounts.length === 0) {
         elements.table.innerHTML = `
             <tr>
-                <td colspan="8">
+                <td colspan="9">
                     <div class="empty-state">
                         <div class="empty-state-icon">📭</div>
                         <div class="empty-state-title">暂无数据</div>
@@ -271,11 +276,21 @@ function renderAccounts(accounts) {
                     ${getStatusText('account', account.status)}
                 </span>
             </td>
+            <td>
+                <div class="cpa-status">
+                    ${account.cpa_uploaded
+                        ? `<span class="badge uploaded" title="已上传于 ${format.date(account.cpa_uploaded_at)}">✓</span>`
+                        : `<span class="badge pending">-</span>`}
+                </div>
+            </td>
             <td>${format.date(account.last_refresh) || '-'}</td>
             <td>
                 <div class="action-buttons">
                     <button class="btn btn-ghost btn-sm" onclick="refreshToken(${account.id})" title="刷新Token">
                         🔄
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="uploadToCpa(${account.id})" title="上传到CPA">
+                        ☁️
                     </button>
                     <button class="btn btn-ghost btn-sm" onclick="viewAccount(${account.id})" title="查看详情">
                         👁️
@@ -335,10 +350,13 @@ function updateBatchButtons() {
     elements.batchDeleteBtn.disabled = count === 0;
     elements.batchRefreshBtn.disabled = count === 0;
     elements.batchValidateBtn.disabled = count === 0;
+    elements.batchUploadCpaBtn.disabled = count === 0;
+    elements.exportBtn.disabled = count === 0;
 
     elements.batchDeleteBtn.textContent = count > 0 ? `🗑️ 删除 (${count})` : '🗑️ 批量删除';
     elements.batchRefreshBtn.textContent = count > 0 ? `🔄 刷新 (${count})` : '🔄 刷新Token';
     elements.batchValidateBtn.textContent = count > 0 ? `✅ 验证 (${count})` : '✅ 验证Token';
+    elements.batchUploadCpaBtn.textContent = count > 0 ? `☁️ 上传 (${count})` : '☁️ 上传CPA';
 }
 
 // 刷新单个账号Token
@@ -538,19 +556,57 @@ async function handleBatchDelete() {
 }
 
 // 导出账号
-function exportAccounts(format) {
-    const params = new URLSearchParams();
-
-    if (elements.filterStatus.value) {
-        params.append('status', elements.filterStatus.value);
+async function exportAccounts(format) {
+    if (selectedAccounts.size === 0) {
+        toast.warning('请先选择要导出的账号');
+        return;
     }
 
-    if (elements.filterService.value) {
-        params.append('email_service', elements.filterService.value);
-    }
+    toast.info(`正在导出 ${selectedAccounts.size} 个账号...`);
 
-    window.location.href = `/api/accounts/export/${format}?${params}`;
-    toast.info('正在导出...');
+    try {
+        const response = await fetch('/api/accounts/export/' + format, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                ids: Array.from(selectedAccounts)
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`导出失败: HTTP ${response.status}`);
+        }
+
+        // 获取文件内容
+        const blob = await response.blob();
+
+        // 从 Content-Disposition 获取文件名
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = `accounts_${Date.now()}.${format === 'cpa' ? 'json' : format}`;
+        if (disposition) {
+            const match = disposition.match(/filename=(.+)/);
+            if (match) {
+                filename = match[1];
+            }
+        }
+
+        // 创建下载链接
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+
+        toast.success('导出成功');
+    } catch (error) {
+        console.error('导出失败:', error);
+        toast.error('导出失败: ' + error.message);
+    }
 }
 
 // HTML 转义
@@ -559,4 +615,53 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// 上传单个账号到CPA
+async function uploadToCpa(id) {
+    try {
+        toast.info('正在上传到CPA...');
+        const result = await api.post(`/accounts/${id}/upload-cpa`);
+
+        if (result.success) {
+            toast.success('上传成功');
+            loadAccounts();
+        } else {
+            toast.error('上传失败: ' + (result.error || '未知错误'));
+        }
+    } catch (error) {
+        toast.error('上传失败: ' + error.message);
+    }
+}
+
+// 批量上传到CPA
+async function handleBatchUploadCpa() {
+    if (selectedAccounts.size === 0) return;
+
+    const confirmed = await confirm(`确定要将选中的 ${selectedAccounts.size} 个账号上传到CPA吗？`);
+    if (!confirmed) return;
+
+    elements.batchUploadCpaBtn.disabled = true;
+    elements.batchUploadCpaBtn.textContent = '上传中...';
+
+    try {
+        const result = await api.post('/accounts/batch-upload-cpa', {
+            ids: Array.from(selectedAccounts)
+        });
+
+        let message = `成功: ${result.success_count}`;
+        if (result.failed_count > 0) {
+            message += `, 失败: ${result.failed_count}`;
+        }
+        if (result.skipped_count > 0) {
+            message += `, 跳过: ${result.skipped_count}`;
+        }
+
+        toast.success(message);
+        loadAccounts();
+    } catch (error) {
+        toast.error('批量上传失败: ' + error.message);
+    } finally {
+        updateBatchButtons();
+    }
 }

@@ -280,6 +280,15 @@ body {
     padding: var(--spacing-lg);
 }
 
+/* 工具栏卡片允许下拉菜单溢出 */
+.card.toolbar-card {
+    overflow: visible;
+}
+
+.card-body.toolbar {
+    overflow: visible;
+}
+
 /* ============================================
    表单元素
    ============================================ */
@@ -710,6 +719,7 @@ body {
     align-items: center;
     flex-wrap: wrap;
     gap: var(--spacing-md);
+    overflow: visible;
 }
 
 .toolbar-left,
