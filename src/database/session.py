@@ -4,12 +4,15 @@
 
 from contextlib import contextmanager
 from typing import Generator
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 import os
+import logging
 
 from .models import Base
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseSessionManager:
@@ -77,6 +80,40 @@ class DatabaseSessionManager:
         """删除所有表（谨慎使用）"""
         Base.metadata.drop_all(bind=self.engine)
 
+    def migrate_tables(self):
+        """
+        数据库迁移 - 添加缺失的列
+        用于在不删除数据的情况下更新表结构
+        """
+        if not self.database_url.startswith("sqlite"):
+            logger.info("非 SQLite 数据库，跳过自动迁移")
+            return
+
+        # 需要检查和添加的新列
+        migrations = [
+            # (表名, 列名, 列类型)
+            ("accounts", "cpa_uploaded", "BOOLEAN DEFAULT 0"),
+            ("accounts", "cpa_uploaded_at", "DATETIME"),
+        ]
+
+        with self.engine.connect() as conn:
+            for table_name, column_name, column_type in migrations:
+                try:
+                    # 检查列是否存在
+                    result = conn.execute(text(
+                        f"SELECT * FROM pragma_table_info('{table_name}') WHERE name='{column_name}'"
+                    ))
+                    if result.fetchone() is None:
+                        # 列不存在，添加它
+                        logger.info(f"添加列 {table_name}.{column_name}")
+                        conn.execute(text(
+                            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+                        ))
+                        conn.commit()
+                        logger.info(f"成功添加列 {table_name}.{column_name}")
+                except Exception as e:
+                    logger.warning(f"迁移列 {table_name}.{column_name} 时出错: {e}")
+
 
 # 全局数据库会话管理器实例
 _db_manager: DatabaseSessionManager = None
@@ -90,6 +127,8 @@ def init_database(database_url: str = None) -> DatabaseSessionManager:
     if _db_manager is None:
         _db_manager = DatabaseSessionManager(database_url)
         _db_manager.create_tables()
+        # 执行数据库迁移
+        _db_manager.migrate_tables()
     return _db_manager
 
 

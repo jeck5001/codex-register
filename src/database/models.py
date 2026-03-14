@@ -50,6 +50,8 @@ class Account(Base):
     expires_at = Column(DateTime)  # Token 过期时间
     status = Column(String(20), default='active')  # 'active', 'expired', 'banned', 'failed'
     extra_data = Column(JSONEncodedDict)  # 额外信息存储
+    cpa_uploaded = Column(Boolean, default=False)  # 是否已上传到 CPA
+    cpa_uploaded_at = Column(DateTime)  # 上传时间
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -68,6 +70,8 @@ class Account(Base):
             'expires_at': self.expires_at.isoformat() if self.expires_at else None,
             'status': self.status,
             'proxy_used': self.proxy_used,
+            'cpa_uploaded': self.cpa_uploaded,
+            'cpa_uploaded_at': self.cpa_uploaded_at.isoformat() if self.cpa_uploaded_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

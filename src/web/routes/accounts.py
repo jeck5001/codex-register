@@ -37,6 +37,8 @@ class AccountResponse(BaseModel):
     expires_at: Optional[str] = None
     status: str
     proxy_used: Optional[str] = None
+    cpa_uploaded: bool = False
+    cpa_uploaded_at: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -84,6 +86,8 @@ def account_to_response(account: Account) -> AccountResponse:
         expires_at=account.expires_at.isoformat() if account.expires_at else None,
         status=account.status,
         proxy_used=account.proxy_used,
+        cpa_uploaded=account.cpa_uploaded or False,
+        cpa_uploaded_at=account.cpa_uploaded_at.isoformat() if account.cpa_uploaded_at else None,
         created_at=account.created_at.isoformat() if account.created_at else None,
         updated_at=account.updated_at.isoformat() if account.updated_at else None,
     )
@@ -249,21 +253,16 @@ async def batch_update_accounts(request: BatchUpdateRequest):
         }
 
 
-@router.get("/export/json")
-async def export_accounts_json(
-    status: Optional[str] = Query(None, description="状态筛选"),
-    email_service: Optional[str] = Query(None, description="邮箱服务筛选"),
-):
+class BatchExportRequest(BaseModel):
+    """批量导出请求"""
+    ids: List[int]
+
+
+@router.post("/export/json")
+async def export_accounts_json(request: BatchExportRequest):
     """导出账号为 JSON 格式"""
     with get_db() as db:
-        query = db.query(Account)
-
-        if status:
-            query = query.filter(Account.status == status)
-        if email_service:
-            query = query.filter(Account.email_service == email_service)
-
-        accounts = query.all()
+        accounts = db.query(Account).filter(Account.id.in_(request.ids)).all()
 
         export_data = []
         for acc in accounts:
@@ -289,7 +288,6 @@ async def export_accounts_json(
         filename = f"accounts_{timestamp}.json"
 
         # 返回 JSON 响应
-        import io
         content = json.dumps(export_data, ensure_ascii=False, indent=2)
 
         return StreamingResponse(
@@ -299,24 +297,14 @@ async def export_accounts_json(
         )
 
 
-@router.get("/export/csv")
-async def export_accounts_csv(
-    status: Optional[str] = Query(None, description="状态筛选"),
-    email_service: Optional[str] = Query(None, description="邮箱服务筛选"),
-):
+@router.post("/export/csv")
+async def export_accounts_csv(request: BatchExportRequest):
     """导出账号为 CSV 格式"""
     import csv
     import io
 
     with get_db() as db:
-        query = db.query(Account)
-
-        if status:
-            query = query.filter(Account.status == status)
-        if email_service:
-            query = query.filter(Account.email_service == email_service)
-
-        accounts = query.all()
+        accounts = db.query(Account).filter(Account.id.in_(request.ids)).all()
 
         # 创建 CSV 内容
         output = io.StringIO()
@@ -357,6 +345,31 @@ async def export_accounts_csv(
         return StreamingResponse(
             iter([output.getvalue()]),
             media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+
+@router.post("/export/cpa")
+async def export_accounts_cpa(request: BatchExportRequest):
+    """导出账号为 CPA Token JSON 格式"""
+    from ...core.cpa_upload import generate_token_json
+
+    with get_db() as db:
+        accounts = db.query(Account).filter(Account.id.in_(request.ids)).all()
+
+        # 生成 CPA 格式的 Token 数组
+        export_data = [generate_token_json(acc) for acc in accounts]
+
+        # 生成文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"cpa_tokens_{timestamp}.json"
+
+        # 返回 JSON 响应
+        content = json.dumps(export_data, ensure_ascii=False, indent=2)
+
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/json",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
@@ -513,5 +526,73 @@ async def batch_validate_tokens(request: BatchValidateRequest):
                 "valid": False,
                 "error": str(e)
             })
+
+    return results
+
+
+# ============== CPA 上传相关 ==============
+
+class CPAUploadRequest(BaseModel):
+    """CPA 上传请求"""
+    proxy: Optional[str] = None
+
+
+class BatchCPAUploadRequest(BaseModel):
+    """批量 CPA 上传请求"""
+    ids: List[int]
+    proxy: Optional[str] = None
+
+
+@router.post("/{account_id}/upload-cpa")
+async def upload_account_to_cpa(account_id: int, request: CPAUploadRequest = None):
+    """上传单个账号到 CPA"""
+    from ...core.cpa_upload import upload_to_cpa, generate_token_json
+
+    # 使用传入的代理或全局代理配置
+    proxy = request.proxy if request and request.proxy else get_settings().proxy_url
+
+    with get_db() as db:
+        account = crud.get_account_by_id(db, account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="账号不存在")
+
+        if not account.access_token:
+            return {
+                "success": False,
+                "error": "账号缺少 Token，无法上传"
+            }
+
+        # 生成 Token JSON
+        token_data = generate_token_json(account)
+
+        # 上传
+        success, message = upload_to_cpa(token_data, proxy)
+
+        if success:
+            # 更新数据库状态
+            account.cpa_uploaded = True
+            account.cpa_uploaded_at = datetime.utcnow()
+            db.commit()
+
+            return {
+                "success": True,
+                "message": message
+            }
+        else:
+            return {
+                "success": False,
+                "error": message
+            }
+
+
+@router.post("/batch-upload-cpa")
+async def batch_upload_accounts_to_cpa(request: BatchCPAUploadRequest):
+    """批量上传账号到 CPA"""
+    from ...core.cpa_upload import batch_upload_to_cpa
+
+    # 使用传入的代理或全局代理配置
+    proxy = request.proxy if request.proxy else get_settings().proxy_url
+
+    results = batch_upload_to_cpa(request.ids, proxy)
 
     return results
