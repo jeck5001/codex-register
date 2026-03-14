@@ -234,6 +234,103 @@
         </div>
     </div>
 
+    <!-- 编辑自定义域名模态框 -->
+    <div class="modal" id="edit-custom-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ 编辑自定义域名服务</h3>
+                <button class="modal-close" id="close-edit-custom-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-custom-form">
+                    <input type="hidden" id="edit-custom-id" name="id">
+                    <div class="form-group">
+                        <label for="edit-custom-name">服务名称</label>
+                        <input type="text" id="edit-custom-name" name="name" required placeholder="例如：我的域名邮箱">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-custom-api-url">API 地址</label>
+                        <input type="text" id="edit-custom-api-url" name="api_url" required placeholder="https://api.example.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-custom-api-key">API 密钥</label>
+                        <input type="text" id="edit-custom-api-key" name="api_key" placeholder="API Key">
+                        <small style="color: var(--text-muted);">留空则保持原值不变</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-custom-domain">邮箱域名</label>
+                        <input type="text" id="edit-custom-domain" name="domain" placeholder="example.com">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-custom-priority">优先级</label>
+                            <input type="number" id="edit-custom-priority" name="priority" value="0" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="edit-custom-enabled" name="enabled">
+                                启用服务
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">保存</button>
+                        <button type="button" class="btn btn-secondary" id="cancel-edit-custom">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑 Outlook 账户模态框 -->
+    <div class="modal" id="edit-outlook-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ 编辑 Outlook 账户</h3>
+                <button class="modal-close" id="close-edit-outlook-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-outlook-form">
+                    <input type="hidden" id="edit-outlook-id" name="id">
+                    <div class="form-group">
+                        <label for="edit-outlook-email">邮箱地址</label>
+                        <input type="text" id="edit-outlook-email" name="email" required placeholder="example@outlook.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-outlook-password">密码</label>
+                        <input type="password" id="edit-outlook-password" name="password" placeholder="留空则保持原值不变">
+                        <small style="color: var(--text-muted);">留空则保持原值不变</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-outlook-client-id">OAuth Client ID (可选)</label>
+                        <input type="text" id="edit-outlook-client-id" name="client_id" placeholder="用于 XOAUTH2 认证">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-outlook-refresh-token">OAuth Refresh Token (可选)</label>
+                        <input type="text" id="edit-outlook-refresh-token" name="refresh_token" placeholder="留空则保持原值不变">
+                        <small style="color: var(--text-muted);">留空则保持原值不变</small>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-outlook-priority">优先级</label>
+                            <input type="number" id="edit-outlook-priority" name="priority" value="0" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="edit-outlook-enabled" name="enabled">
+                                启用账户
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">保存</button>
+                        <button type="button" class="btn btn-secondary" id="cancel-edit-outlook">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/email_services.js"></script>
 </body>

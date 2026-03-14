@@ -228,6 +228,27 @@ async def get_email_service(service_id: int):
         return service_to_response(service)
 
 
+@router.get("/{service_id}/full")
+async def get_email_service_full(service_id: int):
+    """获取单个邮箱服务完整详情（包含敏感字段，用于编辑）"""
+    with get_db() as db:
+        service = db.query(EmailServiceModel).filter(EmailServiceModel.id == service_id).first()
+        if not service:
+            raise HTTPException(status_code=404, detail="服务不存在")
+
+        return {
+            "id": service.id,
+            "service_type": service.service_type,
+            "name": service.name,
+            "enabled": service.enabled,
+            "priority": service.priority,
+            "config": service.config or {},  # 返回完整配置
+            "last_used": service.last_used.isoformat() if service.last_used else None,
+            "created_at": service.created_at.isoformat() if service.created_at else None,
+            "updated_at": service.updated_at.isoformat() if service.updated_at else None,
+        }
+
+
 @router.post("", response_model=EmailServiceResponse)
 async def create_email_service(request: EmailServiceCreate):
     """创建邮箱服务配置"""
@@ -269,7 +290,12 @@ async def update_email_service(service_id: int, request: EmailServiceUpdate):
         if request.name is not None:
             update_data["name"] = request.name
         if request.config is not None:
-            update_data["config"] = request.config
+            # 合并配置而不是替换
+            current_config = service.config or {}
+            merged_config = {**current_config, **request.config}
+            # 移除空值
+            merged_config = {k: v for k, v in merged_config.items() if v}
+            update_data["config"] = merged_config
         if request.enabled is not None:
             update_data["enabled"] = request.enabled
         if request.priority is not None:

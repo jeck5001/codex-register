@@ -2,6 +2,8 @@
 常量定义
 """
 
+import random
+from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Tuple
 
@@ -120,7 +122,48 @@ OTP_MAX_ATTEMPTS = 40  # 最大轮询次数
 PASSWORD_CHARSET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 DEFAULT_PASSWORD_LENGTH = 12
 
-# 用户信息（用于注册）
+# 用户信息生成（用于注册）
+
+# 常用英文名
+FIRST_NAMES = [
+    "James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles",
+    "Emma", "Olivia", "Ava", "Isabella", "Sophia", "Mia", "Charlotte", "Amelia", "Harper", "Evelyn",
+    "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Jamie", "Avery", "Quinn", "Skyler",
+    "Liam", "Noah", "Ethan", "Lucas", "Mason", "Oliver", "Elijah", "Aiden", "Henry", "Sebastian",
+    "Grace", "Lily", "Chloe", "Zoey", "Nora", "Aria", "Hazel", "Aurora", "Stella", "Ivy"
+]
+
+def generate_random_user_info() -> dict:
+    """
+    生成随机用户信息
+
+    Returns:
+        包含 name 和 birthdate 的字典
+    """
+    # 随机选择名字
+    name = random.choice(FIRST_NAMES)
+
+    # 生成随机生日（18-45岁）
+    current_year = datetime.now().year
+    birth_year = random.randint(current_year - 45, current_year - 18)
+    birth_month = random.randint(1, 12)
+    # 根据月份确定天数
+    if birth_month in [1, 3, 5, 7, 8, 10, 12]:
+        birth_day = random.randint(1, 31)
+    elif birth_month in [4, 6, 9, 11]:
+        birth_day = random.randint(1, 30)
+    else:
+        # 2月，简化处理
+        birth_day = random.randint(1, 28)
+
+    birthdate = f"{birth_year}-{birth_month:02d}-{birth_day:02d}"
+
+    return {
+        "name": name,
+        "birthdate": birthdate
+    }
+
+# 保留默认值供兼容
 DEFAULT_USER_INFO = {
     "name": "Neo",
     "birthdate": "2000-02-20",

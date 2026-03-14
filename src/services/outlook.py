@@ -370,13 +370,26 @@ class OutlookService(BaseEmailService):
         self._current_account_index = 0
         self._account_locks: Dict[str, threading.Lock] = {}
 
-        for account_config in self.config.get("accounts", []):
-            account = OutlookAccount.from_config(account_config)
+        # 支持两种配置格式：
+        # 1. 单个账户格式：{"email": "xxx", "password": "xxx"}
+        # 2. 多账户格式：{"accounts": [{"email": "xxx", "password": "xxx"}]}
+        if "email" in self.config and "password" in self.config:
+            # 单个账户格式
+            account = OutlookAccount.from_config(self.config)
             if account.validate():
                 self.accounts.append(account)
                 self._account_locks[account.email] = threading.Lock()
             else:
-                logger.warning(f"无效的 Outlook 账户配置: {account_config}")
+                logger.warning(f"无效的 Outlook 账户配置: {self.config}")
+        else:
+            # 多账户格式
+            for account_config in self.config.get("accounts", []):
+                account = OutlookAccount.from_config(account_config)
+                if account.validate():
+                    self.accounts.append(account)
+                    self._account_locks[account.email] = threading.Lock()
+                else:
+                    logger.warning(f"无效的 Outlook 账户配置: {account_config}")
 
         if not self.accounts:
             logger.warning("未配置有效的 Outlook 账户")

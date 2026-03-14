@@ -22,7 +22,7 @@ from ..database import crud
 from ..database.session import get_db
 from ..config.constants import (
     OPENAI_API_ENDPOINTS,
-    DEFAULT_USER_INFO,
+    generate_random_user_info,
     OTP_CODE_PATTERN,
     DEFAULT_PASSWORD_LENGTH,
     PASSWORD_CHARSET,
@@ -372,7 +372,9 @@ class RegistrationEngine:
     def _create_user_account(self) -> bool:
         """创建用户账户"""
         try:
-            create_account_body = json.dumps(DEFAULT_USER_INFO)
+            user_info = generate_random_user_info()
+            self._log(f"生成用户信息: {user_info['name']}, 生日: {user_info['birthdate']}")
+            create_account_body = json.dumps(user_info)
 
             response = self.session.post(
                 OPENAI_API_ENDPOINTS["create_account"],

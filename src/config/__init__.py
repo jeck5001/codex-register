@@ -13,6 +13,7 @@ from .constants import (
     DEFAULT_PASSWORD_LENGTH,
     PASSWORD_CHARSET,
     DEFAULT_USER_INFO,
+    generate_random_user_info,
     OPENAI_API_ENDPOINTS,
 )
 
@@ -30,5 +31,6 @@ __all__ = [
     'DEFAULT_PASSWORD_LENGTH',
     'PASSWORD_CHARSET',
     'DEFAULT_USER_INFO',
+    'generate_random_user_info',
     'OPENAI_API_ENDPOINTS',
 ]

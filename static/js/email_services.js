@@ -42,11 +42,23 @@ const elements = {
     tempmailEnabled: document.getElementById('tempmail-enabled'),
     testTempmailBtn: document.getElementById('test-tempmail-btn'),
 
-    // 模态框
+    // 添加自定义域名模态框
     addCustomModal: document.getElementById('add-custom-modal'),
     addCustomForm: document.getElementById('add-custom-form'),
     closeCustomModal: document.getElementById('close-custom-modal'),
-    cancelAddCustom: document.getElementById('cancel-add-custom')
+    cancelAddCustom: document.getElementById('cancel-add-custom'),
+
+    // 编辑自定义域名模态框
+    editCustomModal: document.getElementById('edit-custom-modal'),
+    editCustomForm: document.getElementById('edit-custom-form'),
+    closeEditCustomModal: document.getElementById('close-edit-custom-modal'),
+    cancelEditCustom: document.getElementById('cancel-edit-custom'),
+
+    // 编辑 Outlook 模态框
+    editOutlookModal: document.getElementById('edit-outlook-modal'),
+    editOutlookForm: document.getElementById('edit-outlook-form'),
+    closeEditOutlookModal: document.getElementById('close-edit-outlook-modal'),
+    cancelEditOutlook: document.getElementById('cancel-edit-outlook')
 };
 
 // 初始化
@@ -106,6 +118,28 @@ function initEventListeners() {
     });
 
     elements.addCustomForm.addEventListener('submit', handleAddCustom);
+
+    // 编辑自定义域名模态框
+    elements.closeEditCustomModal.addEventListener('click', () => {
+        elements.editCustomModal.classList.remove('active');
+    });
+
+    elements.cancelEditCustom.addEventListener('click', () => {
+        elements.editCustomModal.classList.remove('active');
+    });
+
+    elements.editCustomForm.addEventListener('submit', handleEditCustom);
+
+    // 编辑 Outlook 模态框
+    elements.closeEditOutlookModal.addEventListener('click', () => {
+        elements.editOutlookModal.classList.remove('active');
+    });
+
+    elements.cancelEditOutlook.addEventListener('click', () => {
+        elements.editOutlookModal.classList.remove('active');
+    });
+
+    elements.editOutlookForm.addEventListener('submit', handleEditOutlook);
 
     // 自定义域名全选
     elements.selectAllCustom.addEventListener('change', (e) => {
@@ -181,6 +215,9 @@ async function loadOutlookServices() {
                 <td>${format.date(service.last_used)}</td>
                 <td>
                     <div class="action-buttons">
+                        <button class="btn btn-ghost btn-sm" onclick="editOutlookService(${service.id})" title="编辑">
+                            ✏️
+                        </button>
                         <button class="btn btn-ghost btn-sm" onclick="toggleService(${service.id}, ${!service.enabled})" title="${service.enabled ? '禁用' : '启用'}">
                             ${service.enabled ? '🔇' : '🔊'}
                         </button>
@@ -261,6 +298,9 @@ async function loadCustomServices() {
                 <td>${format.date(service.last_used)}</td>
                 <td>
                     <div class="action-buttons">
+                        <button class="btn btn-ghost btn-sm" onclick="editCustomService(${service.id})" title="编辑">
+                            ✏️
+                        </button>
                         <button class="btn btn-ghost btn-sm" onclick="toggleService(${service.id}, ${!service.enabled})" title="${service.enabled ? '禁用' : '启用'}">
                             ${service.enabled ? '🔇' : '🔊'}
                         </button>
@@ -500,4 +540,140 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ============== 编辑功能 ==============
+
+// 编辑自定义域名服务
+async function editCustomService(id) {
+    try {
+        // 获取完整的服务详情
+        const service = await api.get(`/email-services/${id}/full`);
+
+        // 填充表单
+        document.getElementById('edit-custom-id').value = service.id;
+        document.getElementById('edit-custom-name').value = service.name || '';
+        document.getElementById('edit-custom-api-url').value = service.config?.api_url || '';
+        document.getElementById('edit-custom-api-key').value = service.config?.api_key || '';
+        document.getElementById('edit-custom-domain').value = service.config?.domain || '';
+        document.getElementById('edit-custom-priority').value = service.priority || 0;
+        document.getElementById('edit-custom-enabled').checked = service.enabled;
+
+        // 清空密码提示
+        document.getElementById('edit-custom-api-key').placeholder = service.config?.api_key ? '已设置，留空保持不变' : 'API Key';
+
+        // 显示模态框
+        elements.editCustomModal.classList.add('active');
+
+    } catch (error) {
+        toast.error('获取服务信息失败: ' + error.message);
+    }
+}
+
+// 保存编辑自定义域名服务
+async function handleEditCustom(e) {
+    e.preventDefault();
+
+    const id = document.getElementById('edit-custom-id').value;
+    const formData = new FormData(e.target);
+
+    // 构建更新数据
+    const updateData = {
+        name: formData.get('name'),
+        priority: parseInt(formData.get('priority')) || 0,
+        enabled: formData.get('enabled') === 'on'
+    };
+
+    // 构建配置
+    const config = {
+        api_url: formData.get('api_url'),
+        domain: formData.get('domain')
+    };
+
+    // 只有在填写了 API Key 时才更新
+    const apiKey = formData.get('api_key');
+    if (apiKey && apiKey.trim()) {
+        config.api_key = apiKey.trim();
+    }
+
+    updateData.config = config;
+
+    try {
+        await api.patch(`/email-services/${id}`, updateData);
+        toast.success('服务更新成功');
+        elements.editCustomModal.classList.remove('active');
+        loadCustomServices();
+        loadStats();
+    } catch (error) {
+        toast.error('更新失败: ' + error.message);
+    }
+}
+
+// 编辑 Outlook 服务
+async function editOutlookService(id) {
+    try {
+        // 获取完整的服务详情
+        const service = await api.get(`/email-services/${id}/full`);
+
+        // 填充表单
+        document.getElementById('edit-outlook-id').value = service.id;
+        document.getElementById('edit-outlook-email').value = service.config?.email || service.name || '';
+        document.getElementById('edit-outlook-password').value = '';
+        document.getElementById('edit-outlook-password').placeholder = service.config?.password ? '已设置，留空保持不变' : '请输入密码';
+        document.getElementById('edit-outlook-client-id').value = service.config?.client_id || '';
+        document.getElementById('edit-outlook-refresh-token').value = '';
+        document.getElementById('edit-outlook-refresh-token').placeholder = service.config?.refresh_token ? '已设置，留空保持不变' : 'OAuth Refresh Token';
+        document.getElementById('edit-outlook-priority').value = service.priority || 0;
+        document.getElementById('edit-outlook-enabled').checked = service.enabled;
+
+        // 显示模态框
+        elements.editOutlookModal.classList.add('active');
+
+    } catch (error) {
+        toast.error('获取服务信息失败: ' + error.message);
+    }
+}
+
+// 保存编辑 Outlook 服务
+async function handleEditOutlook(e) {
+    e.preventDefault();
+
+    const id = document.getElementById('edit-outlook-id').value;
+    const formData = new FormData(e.target);
+
+    // 获取当前服务信息以保留未修改的敏感字段
+    let currentService;
+    try {
+        currentService = await api.get(`/email-services/${id}/full`);
+    } catch (error) {
+        toast.error('获取服务信息失败');
+        return;
+    }
+
+    // 构建更新数据
+    const updateData = {
+        name: formData.get('email'),  // 使用邮箱作为名称
+        priority: parseInt(formData.get('priority')) || 0,
+        enabled: formData.get('enabled') === 'on'
+    };
+
+    // 构建配置，保留未修改的敏感字段
+    const config = {
+        email: formData.get('email'),
+        password: formData.get('password')?.trim() || currentService.config?.password || '',
+        client_id: formData.get('client_id')?.trim() || currentService.config?.client_id || '',
+        refresh_token: formData.get('refresh_token')?.trim() || currentService.config?.refresh_token || ''
+    };
+
+    updateData.config = config;
+
+    try {
+        await api.patch(`/email-services/${id}`, updateData);
+        toast.success('账户更新成功');
+        elements.editOutlookModal.classList.remove('active');
+        loadOutlookServices();
+        loadStats();
+    } catch (error) {
+        toast.error('更新失败: ' + error.message);
+    }
 }

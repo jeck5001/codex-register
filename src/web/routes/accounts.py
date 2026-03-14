@@ -15,6 +15,7 @@ from ...database import crud
 from ...database.session import get_db
 from ...database.models import Account
 from ...config.constants import AccountStatus
+from ...config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -417,7 +418,8 @@ async def refresh_account_token(account_id: int, request: TokenRefreshRequest = 
     """刷新单个账号的 Token"""
     from ...core.token_refresh import refresh_account_token as do_refresh
 
-    proxy = request.proxy if request else None
+    # 使用传入的代理或全局代理配置
+    proxy = request.proxy if request and request.proxy else get_settings().proxy_url
     result = do_refresh(account_id, proxy)
 
     if result.success:
@@ -438,6 +440,9 @@ async def batch_refresh_tokens(request: BatchRefreshRequest, background_tasks: B
     """批量刷新账号 Token"""
     from ...core.token_refresh import refresh_account_token as do_refresh
 
+    # 使用传入的代理或全局代理配置
+    proxy = request.proxy if request.proxy else get_settings().proxy_url
+
     results = {
         "success_count": 0,
         "failed_count": 0,
@@ -446,7 +451,7 @@ async def batch_refresh_tokens(request: BatchRefreshRequest, background_tasks: B
 
     for account_id in request.ids:
         try:
-            result = do_refresh(account_id, request.proxy)
+            result = do_refresh(account_id, proxy)
             if result.success:
                 results["success_count"] += 1
             else:
@@ -464,7 +469,8 @@ async def validate_account_token(account_id: int, request: TokenValidateRequest 
     """验证单个账号的 Token 有效性"""
     from ...core.token_refresh import validate_account_token as do_validate
 
-    proxy = request.proxy if request else None
+    # 使用传入的代理或全局代理配置
+    proxy = request.proxy if request and request.proxy else get_settings().proxy_url
     is_valid, error = do_validate(account_id, proxy)
 
     return {
@@ -479,6 +485,9 @@ async def batch_validate_tokens(request: BatchValidateRequest):
     """批量验证账号 Token 有效性"""
     from ...core.token_refresh import validate_account_token as do_validate
 
+    # 使用传入的代理或全局代理配置
+    proxy = request.proxy if request.proxy else get_settings().proxy_url
+
     results = {
         "valid_count": 0,
         "invalid_count": 0,
@@ -487,7 +496,7 @@ async def batch_validate_tokens(request: BatchValidateRequest):
 
     for account_id in request.ids:
         try:
-            is_valid, error = do_validate(account_id, request.proxy)
+            is_valid, error = do_validate(account_id, proxy)
             results["details"].append({
                 "id": account_id,
                 "valid": is_valid,
