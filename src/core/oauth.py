@@ -8,11 +8,11 @@ import hashlib
 import json
 import secrets
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
+
+from curl_cffi import requests as cffi_requests
 
 from ..config.constants import (
     OAUTH_CLIENT_ID,
@@ -122,31 +122,59 @@ def _to_int(v: Any) -> int:
         return 0
 
 
-def _post_form(url: str, data: Dict[str, str], timeout: int = 30) -> Dict[str, Any]:
-    """发送 POST 表单请求"""
-    body = urllib.parse.urlencode(data).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-        },
-    )
+def _post_form(
+    url: str,
+    data: Dict[str, str],
+    timeout: int = 30,
+    proxy_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    发送 POST 表单请求
+
+    Args:
+        url: 请求 URL
+        data: 表单数据
+        timeout: 超时时间
+        proxy_url: 代理 URL
+
+    Returns:
+        响应 JSON 数据
+    """
+    # 构建代理配置
+    proxies = None
+    if proxy_url:
+        proxies = {
+            "http": proxy_url,
+            "https": proxy_url,
+        }
+
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read()
-            if resp.status != 200:
-                raise RuntimeError(
-                    f"token exchange failed: {resp.status}: {raw.decode('utf-8', 'replace')}"
-                )
-            return json.loads(raw.decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        raw = exc.read()
-        raise RuntimeError(
-            f"token exchange failed: {exc.code}: {raw.decode('utf-8', 'replace')}"
-        ) from exc
+        # 使用 curl_cffi 发送请求，支持代理和浏览器指纹
+        response = cffi_requests.post(
+            url,
+            data=data,
+            headers=headers,
+            timeout=timeout,
+            proxies=proxies,
+            impersonate="chrome"
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"token exchange failed: {response.status_code}: {response.text}"
+            )
+
+        return response.json()
+
+    except cffi_requests.RequestsError as e:
+        raise RuntimeError(f"token exchange failed: network error: {e}") from e
 
 
 @dataclass(frozen=True)
@@ -207,7 +235,8 @@ def submit_callback_url(
     code_verifier: str,
     redirect_uri: str = OAUTH_REDIRECT_URI,
     client_id: str = OAUTH_CLIENT_ID,
-    token_url: str = OAUTH_TOKEN_URL
+    token_url: str = OAUTH_TOKEN_URL,
+    proxy_url: Optional[str] = None
 ) -> str:
     """
     处理 OAuth 回调 URL，获取访问令牌
@@ -219,6 +248,7 @@ def submit_callback_url(
         redirect_uri: 回调地址
         client_id: OpenAI Client ID
         token_url: Token 交换地址
+        proxy_url: 代理 URL
 
     Returns:
         包含访问令牌等信息的 JSON 字符串
@@ -248,6 +278,7 @@ def submit_callback_url(
             "redirect_uri": redirect_uri,
             "code_verifier": code_verifier,
         },
+        proxy_url=proxy_url
     )
 
     access_token = (token_resp.get("access_token") or "").strip()
@@ -289,13 +320,15 @@ class OAuthManager:
         auth_url: str = OAUTH_AUTH_URL,
         token_url: str = OAUTH_TOKEN_URL,
         redirect_uri: str = OAUTH_REDIRECT_URI,
-        scope: str = OAUTH_SCOPE
+        scope: str = OAUTH_SCOPE,
+        proxy_url: Optional[str] = None
     ):
         self.client_id = client_id
         self.auth_url = auth_url
         self.token_url = token_url
         self.redirect_uri = redirect_uri
         self.scope = scope
+        self.proxy_url = proxy_url
 
     def start_oauth(self) -> OAuthStart:
         """开始 OAuth 流程"""
@@ -318,7 +351,8 @@ class OAuthManager:
             code_verifier=code_verifier,
             redirect_uri=self.redirect_uri,
             client_id=self.client_id,
-            token_url=self.token_url
+            token_url=self.token_url,
+            proxy_url=self.proxy_url
         )
         return json.loads(result_json)
 
