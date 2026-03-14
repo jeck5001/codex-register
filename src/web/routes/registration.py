@@ -112,6 +112,44 @@ class TaskListResponse(BaseModel):
     tasks: List[RegistrationTaskResponse]
 
 
+# ============== Outlook 批量注册模型 ==============
+
+class OutlookAccountForRegistration(BaseModel):
+    """可用于注册的 Outlook 账户"""
+    id: int                      # EmailService 表的 ID
+    email: str
+    name: str
+    has_oauth: bool              # 是否有 OAuth 配置
+    is_registered: bool          # 是否已注册
+    registered_account_id: Optional[int] = None
+
+
+class OutlookAccountsListResponse(BaseModel):
+    """Outlook 账户列表响应"""
+    total: int
+    registered_count: int        # 已注册数量
+    unregistered_count: int      # 未注册数量
+    accounts: List[OutlookAccountForRegistration]
+
+
+class OutlookBatchRegistrationRequest(BaseModel):
+    """Outlook 批量注册请求"""
+    service_ids: List[int]       # 选中的 EmailService ID
+    skip_registered: bool = True  # 自动跳过已注册邮箱
+    proxy: Optional[str] = None
+    interval_min: int = 5
+    interval_max: int = 30
+
+
+class OutlookBatchRegistrationResponse(BaseModel):
+    """Outlook 批量注册响应"""
+    batch_id: str
+    total: int                   # 总数
+    skipped: int                 # 跳过数（已注册）
+    to_register: int             # 待注册数
+    service_ids: List[int]       # 实际要注册的服务 ID
+
+
 # ============== Helper Functions ==============
 
 def task_to_response(task: RegistrationTask) -> RegistrationTaskResponse:
@@ -688,3 +726,285 @@ async def get_available_email_services():
                 })
 
     return result
+
+
+# ============== Outlook 批量注册 API ==============
+
+@router.get("/outlook-accounts", response_model=OutlookAccountsListResponse)
+async def get_outlook_accounts_for_registration():
+    """
+    获取可用于注册的 Outlook 账户列表
+
+    返回所有已启用的 Outlook 服务，并检查每个邮箱是否已在 accounts 表中注册
+    """
+    from ...database.models import EmailService as EmailServiceModel
+    from ...database.models import Account
+
+    with get_db() as db:
+        # 获取所有启用的 Outlook 服务
+        outlook_services = db.query(EmailServiceModel).filter(
+            EmailServiceModel.service_type == "outlook",
+            EmailServiceModel.enabled == True
+        ).order_by(EmailServiceModel.priority.asc()).all()
+
+        accounts = []
+        registered_count = 0
+        unregistered_count = 0
+
+        for service in outlook_services:
+            config = service.config or {}
+            email = config.get("email") or service.name
+
+            # 检查是否已注册（查询 accounts 表）
+            existing_account = db.query(Account).filter(
+                Account.email == email
+            ).first()
+
+            is_registered = existing_account is not None
+            if is_registered:
+                registered_count += 1
+            else:
+                unregistered_count += 1
+
+            accounts.append(OutlookAccountForRegistration(
+                id=service.id,
+                email=email,
+                name=service.name,
+                has_oauth=bool(config.get("client_id") and config.get("refresh_token")),
+                is_registered=is_registered,
+                registered_account_id=existing_account.id if existing_account else None
+            ))
+
+        return OutlookAccountsListResponse(
+            total=len(accounts),
+            registered_count=registered_count,
+            unregistered_count=unregistered_count,
+            accounts=accounts
+        )
+
+
+async def run_outlook_batch_registration(
+    batch_id: str,
+    service_ids: List[int],
+    skip_registered: bool,
+    proxy: Optional[str],
+    interval_min: int,
+    interval_max: int
+):
+    """
+    异步执行 Outlook 批量注册任务
+
+    遍历选中的 Outlook 服务，检查邮箱是否已注册，执行注册任务
+    """
+    from ...database.models import EmailService as EmailServiceModel
+    from ...database.models import Account
+
+    batch_tasks[batch_id] = {
+        "total": len(service_ids),
+        "completed": 0,
+        "success": 0,
+        "failed": 0,
+        "skipped": 0,
+        "cancelled": False,
+        "service_ids": service_ids,
+        "current_index": 0,
+        "logs": []
+    }
+
+    try:
+        for i, service_id in enumerate(service_ids):
+            # 检查是否已取消
+            if batch_tasks[batch_id]["cancelled"]:
+                logger.info(f"Outlook 批量任务 {batch_id} 已取消")
+                break
+
+            batch_tasks[batch_id]["current_index"] = i
+
+            with get_db() as db:
+                # 获取邮箱服务
+                service = db.query(EmailServiceModel).filter(
+                    EmailServiceModel.id == service_id
+                ).first()
+
+                if not service:
+                    batch_tasks[batch_id]["logs"].append(f"[跳过] 服务 ID {service_id} 不存在")
+                    batch_tasks[batch_id]["skipped"] += 1
+                    batch_tasks[batch_id]["completed"] += 1
+                    continue
+
+                config = service.config or {}
+                email = config.get("email") or service.name
+
+                # 检查是否已注册
+                if skip_registered:
+                    existing_account = db.query(Account).filter(
+                        Account.email == email
+                    ).first()
+
+                    if existing_account:
+                        batch_tasks[batch_id]["logs"].append(f"[跳过] {email} 已注册 (账号 ID: {existing_account.id})")
+                        batch_tasks[batch_id]["skipped"] += 1
+                        batch_tasks[batch_id]["completed"] += 1
+                        continue
+
+                # 创建注册任务
+                task_uuid = str(uuid.uuid4())
+                task = crud.create_registration_task(
+                    db,
+                    task_uuid=task_uuid,
+                    proxy=proxy,
+                    email_service_id=service_id
+                )
+
+            batch_tasks[batch_id]["logs"].append(f"[注册] 开始注册 {email}...")
+
+            # 运行单个注册任务
+            await run_registration_task(
+                task_uuid, "outlook", proxy, None, service_id
+            )
+
+            # 更新统计
+            with get_db() as db:
+                task = crud.get_registration_task(db, task_uuid)
+                if task:
+                    batch_tasks[batch_id]["completed"] += 1
+                    if task.status == "completed":
+                        batch_tasks[batch_id]["success"] += 1
+                        batch_tasks[batch_id]["logs"].append(f"[成功] {email} 注册成功")
+                    elif task.status == "failed":
+                        batch_tasks[batch_id]["failed"] += 1
+                        batch_tasks[batch_id]["logs"].append(f"[失败] {email} 注册失败: {task.error_message}")
+
+            # 如果不是最后一个任务，等待随机间隔
+            if i < len(service_ids) - 1 and not batch_tasks[batch_id]["cancelled"]:
+                wait_time = random.randint(interval_min, interval_max)
+                logger.info(f"Outlook 批量任务 {batch_id}: 等待 {wait_time} 秒后继续下一个任务")
+                await asyncio.sleep(wait_time)
+
+        logger.info(f"Outlook 批量任务 {batch_id} 完成: 成功 {batch_tasks[batch_id]['success']}, 失败 {batch_tasks[batch_id]['failed']}, 跳过 {batch_tasks[batch_id]['skipped']}")
+
+    except Exception as e:
+        logger.error(f"Outlook 批量任务 {batch_id} 异常: {e}")
+        batch_tasks[batch_id]["logs"].append(f"[错误] 批量任务异常: {str(e)}")
+    finally:
+        batch_tasks[batch_id]["finished"] = True
+
+
+@router.post("/outlook-batch", response_model=OutlookBatchRegistrationResponse)
+async def start_outlook_batch_registration(
+    request: OutlookBatchRegistrationRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    启动 Outlook 批量注册任务
+
+    - service_ids: 选中的 EmailService ID 列表
+    - skip_registered: 是否自动跳过已注册邮箱（默认 True）
+    - proxy: 代理地址
+    - interval_min: 最小间隔秒数
+    - interval_max: 最大间隔秒数
+    """
+    from ...database.models import EmailService as EmailServiceModel
+    from ...database.models import Account
+
+    # 验证参数
+    if not request.service_ids:
+        raise HTTPException(status_code=400, detail="请选择至少一个 Outlook 账户")
+
+    if request.interval_min < 0 or request.interval_max < request.interval_min:
+        raise HTTPException(status_code=400, detail="间隔时间参数无效")
+
+    # 过滤掉已注册的邮箱
+    actual_service_ids = request.service_ids
+    skipped_count = 0
+
+    if request.skip_registered:
+        actual_service_ids = []
+        with get_db() as db:
+            for service_id in request.service_ids:
+                service = db.query(EmailServiceModel).filter(
+                    EmailServiceModel.id == service_id
+                ).first()
+
+                if not service:
+                    continue
+
+                config = service.config or {}
+                email = config.get("email") or service.name
+
+                # 检查是否已注册
+                existing_account = db.query(Account).filter(
+                    Account.email == email
+                ).first()
+
+                if existing_account:
+                    skipped_count += 1
+                else:
+                    actual_service_ids.append(service_id)
+
+    if not actual_service_ids:
+        return OutlookBatchRegistrationResponse(
+            batch_id="",
+            total=len(request.service_ids),
+            skipped=skipped_count,
+            to_register=0,
+            service_ids=[]
+        )
+
+    # 创建批量任务
+    batch_id = str(uuid.uuid4())
+
+    # 初始化批量任务状态
+    batch_tasks[batch_id] = {
+        "total": len(actual_service_ids),
+        "completed": 0,
+        "success": 0,
+        "failed": 0,
+        "skipped": 0,
+        "cancelled": False,
+        "service_ids": actual_service_ids,
+        "current_index": 0,
+        "logs": [],
+        "finished": False
+    }
+
+    # 在后台运行批量注册
+    background_tasks.add_task(
+        run_outlook_batch_registration,
+        batch_id,
+        actual_service_ids,
+        request.skip_registered,
+        request.proxy,
+        request.interval_min,
+        request.interval_max
+    )
+
+    return OutlookBatchRegistrationResponse(
+        batch_id=batch_id,
+        total=len(request.service_ids),
+        skipped=skipped_count,
+        to_register=len(actual_service_ids),
+        service_ids=actual_service_ids
+    )
+
+
+@router.get("/outlook-batch/{batch_id}")
+async def get_outlook_batch_status(batch_id: str):
+    """获取 Outlook 批量任务状态"""
+    if batch_id not in batch_tasks:
+        raise HTTPException(status_code=404, detail="批量任务不存在")
+
+    batch = batch_tasks[batch_id]
+    return {
+        "batch_id": batch_id,
+        "total": batch["total"],
+        "completed": batch["completed"],
+        "success": batch["success"],
+        "failed": batch["failed"],
+        "skipped": batch.get("skipped", 0),
+        "current_index": batch["current_index"],
+        "cancelled": batch["cancelled"],
+        "finished": batch.get("finished", False),
+        "logs": batch.get("logs", []),
+        "progress": f"{batch['completed']}/{batch['total']}"
+    }

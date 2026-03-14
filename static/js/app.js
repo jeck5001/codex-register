@@ -10,6 +10,8 @@ let logPollingInterval = null;
 let batchPollingInterval = null;
 let accountsPollingInterval = null;
 let isBatchMode = false;
+let isOutlookBatchMode = false;
+let outlookAccounts = [];
 let availableServices = {
     tempmail: { available: true, services: [] },
     outlook: { available: false, services: [] },
@@ -21,6 +23,7 @@ const elements = {
     form: document.getElementById('registration-form'),
     emailService: document.getElementById('email-service'),
     regMode: document.getElementById('reg-mode'),
+    regModeGroup: document.getElementById('reg-mode-group'),
     batchCountGroup: document.getElementById('batch-count-group'),
     batchCount: document.getElementById('batch-count'),
     batchOptions: document.getElementById('batch-options'),
@@ -47,7 +50,13 @@ const elements = {
     batchRemaining: document.getElementById('batch-remaining'),
     // 已注册账号
     recentAccountsTable: document.getElementById('recent-accounts-table'),
-    refreshAccountsBtn: document.getElementById('refresh-accounts-btn')
+    refreshAccountsBtn: document.getElementById('refresh-accounts-btn'),
+    // Outlook 批量注册
+    outlookBatchSection: document.getElementById('outlook-batch-section'),
+    outlookAccountsContainer: document.getElementById('outlook-accounts-container'),
+    outlookIntervalMin: document.getElementById('outlook-interval-min'),
+    outlookIntervalMax: document.getElementById('outlook-interval-max'),
+    outlookSkipRegistered: document.getElementById('outlook-skip-registered')
 };
 
 // 初始化
@@ -136,6 +145,13 @@ function updateEmailServiceOptions() {
         });
 
         select.appendChild(optgroup);
+
+        // Outlook 批量注册选项
+        const batchOption = document.createElement('option');
+        batchOption.value = 'outlook_batch:all';
+        batchOption.textContent = `📋 Outlook 批量注册 (${availableServices.outlook.count} 个账户)`;
+        batchOption.dataset.type = 'outlook_batch';
+        optgroup.appendChild(batchOption);
     } else {
         const optgroup = document.createElement('optgroup');
         optgroup.label = '📧 Outlook (未配置)';
@@ -188,6 +204,22 @@ function handleServiceChange(e) {
     const [type, id] = value.split(':');
     const selectedOption = e.target.options[e.target.selectedIndex];
 
+    // 处理 Outlook 批量注册模式
+    if (type === 'outlook_batch') {
+        isOutlookBatchMode = true;
+        elements.outlookBatchSection.style.display = 'block';
+        elements.regModeGroup.style.display = 'none';
+        elements.batchCountGroup.style.display = 'none';
+        elements.batchOptions.style.display = 'none';
+        loadOutlookAccounts();
+        addLog('info', '[系统] 已切换到 Outlook 批量注册模式');
+        return;
+    } else {
+        isOutlookBatchMode = false;
+        elements.outlookBatchSection.style.display = 'none';
+        elements.regModeGroup.style.display = 'block';
+    }
+
     // 显示服务信息
     if (type === 'outlook') {
         const service = availableServices.outlook.services.find(s => s.id == id);
@@ -218,6 +250,12 @@ async function handleStartRegistration(e) {
     const selectedValue = elements.emailService.value;
     if (!selectedValue) {
         toast.error('请选择一个邮箱服务');
+        return;
+    }
+
+    // 处理 Outlook 批量注册模式
+    if (isOutlookBatchMode) {
+        await handleOutlookBatchRegistration();
         return;
     }
 
@@ -595,6 +633,8 @@ function resetButtons() {
     elements.cancelBtn.disabled = true;
     currentTask = null;
     currentBatch = null;
+    isBatchMode = false;
+    // 注意：不重置 isOutlookBatchMode，因为用户可能想继续使用 Outlook 批量模式
 }
 
 // HTML 转义
@@ -603,4 +643,180 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+
+// ============== Outlook 批量注册功能 ==============
+
+// 加载 Outlook 账户列表
+async function loadOutlookAccounts() {
+    try {
+        elements.outlookAccountsContainer.innerHTML = '<div class="loading-placeholder" style="text-align: center; padding: var(--spacing-md); color: var(--text-muted);">加载中...</div>';
+
+        const data = await api.get('/registration/outlook-accounts');
+        outlookAccounts = data.accounts || [];
+
+        renderOutlookAccountsList();
+
+        addLog('info', `[系统] 已加载 ${data.total} 个 Outlook 账户 (已注册: ${data.registered_count}, 未注册: ${data.unregistered_count})`);
+
+    } catch (error) {
+        console.error('加载 Outlook 账户列表失败:', error);
+        elements.outlookAccountsContainer.innerHTML = `<div style="text-align: center; padding: var(--spacing-md); color: var(--text-muted);">加载失败: ${error.message}</div>`;
+        addLog('error', `[错误] 加载 Outlook 账户列表失败: ${error.message}`);
+    }
+}
+
+// 渲染 Outlook 账户列表
+function renderOutlookAccountsList() {
+    if (outlookAccounts.length === 0) {
+        elements.outlookAccountsContainer.innerHTML = '<div style="text-align: center; padding: var(--spacing-md); color: var(--text-muted);">没有可用的 Outlook 账户</div>';
+        return;
+    }
+
+    const html = outlookAccounts.map(account => `
+        <label class="outlook-account-item" style="display: flex; align-items: center; padding: var(--spacing-sm); border-bottom: 1px solid var(--border-light); cursor: pointer; ${account.is_registered ? 'opacity: 0.6;' : ''}" data-id="${account.id}" data-registered="${account.is_registered}">
+            <input type="checkbox" class="outlook-account-checkbox" value="${account.id}" ${account.is_registered ? '' : 'checked'} style="margin-right: var(--spacing-sm);">
+            <div style="flex: 1;">
+                <div style="font-weight: 500;">${escapeHtml(account.email)}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">
+                    ${account.is_registered
+                        ? `<span style="color: var(--success-color);">✓ 已注册</span>`
+                        : '<span style="color: var(--primary-color);">未注册</span>'
+                    }
+                    ${account.has_oauth ? ' | OAuth' : ''}
+                </div>
+            </div>
+        </label>
+    `).join('');
+
+    elements.outlookAccountsContainer.innerHTML = html;
+}
+
+// 全选
+function selectAllOutlookAccounts() {
+    const checkboxes = document.querySelectorAll('.outlook-account-checkbox');
+    checkboxes.forEach(cb => cb.checked = true);
+}
+
+// 只选未注册
+function selectUnregisteredOutlook() {
+    const items = document.querySelectorAll('.outlook-account-item');
+    items.forEach(item => {
+        const checkbox = item.querySelector('.outlook-account-checkbox');
+        const isRegistered = item.dataset.registered === 'true';
+        checkbox.checked = !isRegistered;
+    });
+}
+
+// 取消全选
+function deselectAllOutlookAccounts() {
+    const checkboxes = document.querySelectorAll('.outlook-account-checkbox');
+    checkboxes.forEach(cb => cb.checked = false);
+}
+
+// 处理 Outlook 批量注册
+async function handleOutlookBatchRegistration() {
+    // 获取选中的账户
+    const selectedIds = [];
+    document.querySelectorAll('.outlook-account-checkbox:checked').forEach(cb => {
+        selectedIds.push(parseInt(cb.value));
+    });
+
+    if (selectedIds.length === 0) {
+        toast.error('请选择至少一个 Outlook 账户');
+        return;
+    }
+
+    const intervalMin = parseInt(elements.outlookIntervalMin.value) || 5;
+    const intervalMax = parseInt(elements.outlookIntervalMax.value) || 30;
+    const skipRegistered = elements.outlookSkipRegistered.checked;
+
+    // 禁用开始按钮
+    elements.startBtn.disabled = true;
+    elements.cancelBtn.disabled = false;
+
+    // 清空日志
+    elements.consoleLog.innerHTML = '';
+
+    const requestData = {
+        service_ids: selectedIds,
+        skip_registered: skipRegistered,
+        interval_min: intervalMin,
+        interval_max: intervalMax
+    };
+
+    addLog('info', `[系统] 正在启动 Outlook 批量注册 (${selectedIds.length} 个账户)...`);
+
+    try {
+        const data = await api.post('/registration/outlook-batch', requestData);
+
+        if (data.to_register === 0) {
+            addLog('warning', '[警告] 所有选中的邮箱都已注册，无需重复注册');
+            toast.warning('所有选中的邮箱都已注册');
+            resetButtons();
+            return;
+        }
+
+        currentBatch = { batch_id: data.batch_id, ...data };
+        addLog('info', `[系统] 批量任务已创建: ${data.batch_id}`);
+        addLog('info', `[系统] 总数: ${data.total}, 跳过已注册: ${data.skipped}, 待注册: ${data.to_register}`);
+
+        // 初始化批量状态显示
+        showBatchStatus({ count: data.to_register });
+
+        // 开始轮询批量状态
+        startOutlookBatchPolling(data.batch_id);
+
+    } catch (error) {
+        addLog('error', `[错误] 启动失败: ${error.message}`);
+        toast.error(error.message);
+        resetButtons();
+    }
+}
+
+// 开始轮询 Outlook 批量状态
+function startOutlookBatchPolling(batchId) {
+    batchPollingInterval = setInterval(async () => {
+        try {
+            const data = await api.get(`/registration/outlook-batch/${batchId}`);
+
+            // 更新进度
+            updateBatchProgress({
+                total: data.total,
+                completed: data.completed,
+                success: data.success,
+                failed: data.failed
+            });
+
+            // 输出日志
+            if (data.logs && data.logs.length > 0) {
+                const lastLogIndex = batchPollingInterval.lastLogIndex || 0;
+                for (let i = lastLogIndex; i < data.logs.length; i++) {
+                    const log = data.logs[i];
+                    const logType = getLogType(log);
+                    addLog(logType, log);
+                }
+                batchPollingInterval.lastLogIndex = data.logs.length;
+            }
+
+            // 检查是否完成
+            if (data.finished) {
+                stopBatchPolling();
+                resetButtons();
+
+                addLog('info', `[完成] Outlook 批量任务完成！成功: ${data.success}, 失败: ${data.failed}, 跳过: ${data.skipped || 0}`);
+                if (data.success > 0) {
+                    toast.success(`Outlook 批量注册完成，成功 ${data.success} 个`);
+                    loadRecentAccounts();
+                } else {
+                    toast.warning('Outlook 批量注册完成，但没有成功注册任何账号');
+                }
+            }
+        } catch (error) {
+            console.error('轮询 Outlook 批量状态失败:', error);
+        }
+    }, 2000);
+
+    batchPollingInterval.lastLogIndex = 0;
 }
