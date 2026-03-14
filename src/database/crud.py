@@ -29,7 +29,8 @@ def create_account(
     id_token: Optional[str] = None,
     proxy_used: Optional[str] = None,
     expires_at: Optional['datetime'] = None,
-    extra_data: Optional[Dict[str, Any]] = None
+    extra_data: Optional[Dict[str, Any]] = None,
+    status: Optional[str] = None
 ) -> Account:
     """创建新账户"""
     db_account = Account(
@@ -47,6 +48,7 @@ def create_account(
         proxy_used=proxy_used,
         expires_at=expires_at,
         extra_data=extra_data or {},
+        status=status or 'active',
         registered_at=datetime.utcnow()
     )
     db.add(db_account)

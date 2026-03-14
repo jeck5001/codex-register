@@ -248,18 +248,37 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         raise ValueError("没有可用的自定义域名邮箱服务，请先在设置中配置")
                 elif service_type == EmailServiceType.OUTLOOK:
                     # 检查数据库中是否有可用的 Outlook 账户
-                    from ...database.models import EmailService as EmailServiceModel
-                    db_service = db.query(EmailServiceModel).filter(
+                    from ...database.models import EmailService as EmailServiceModel, Account
+                    # 获取所有启用的 Outlook 服务
+                    outlook_services = db.query(EmailServiceModel).filter(
                         EmailServiceModel.service_type == "outlook",
                         EmailServiceModel.enabled == True
-                    ).order_by(EmailServiceModel.priority.asc()).first()
+                    ).order_by(EmailServiceModel.priority.asc()).all()
 
-                    if db_service and db_service.config:
-                        config = db_service.config.copy()
-                        crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
-                        logger.info(f"使用数据库 Outlook 账户: {db_service.name}")
-                    else:
+                    if not outlook_services:
                         raise ValueError("没有可用的 Outlook 账户，请先在设置中导入账户")
+
+                    # 找到一个未注册的 Outlook 账户
+                    selected_service = None
+                    for svc in outlook_services:
+                        email = svc.config.get("email") if svc.config else None
+                        if not email:
+                            continue
+                        # 检查是否已在 accounts 表中注册
+                        existing = db.query(Account).filter(Account.email == email).first()
+                        if not existing:
+                            selected_service = svc
+                            logger.info(f"选择未注册的 Outlook 账户: {email}")
+                            break
+                        else:
+                            logger.info(f"跳过已注册的 Outlook 账户: {email}")
+
+                    if selected_service and selected_service.config:
+                        config = selected_service.config.copy()
+                        crud.update_registration_task(db, task_uuid, email_service_id=selected_service.id)
+                        logger.info(f"使用数据库 Outlook 账户: {selected_service.name}")
+                    else:
+                        raise ValueError("所有 Outlook 账户都已注册过 OpenAI 账号，请添加新的 Outlook 账户")
                 else:
                     config = email_service_config or {}
 

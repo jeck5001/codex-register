@@ -297,7 +297,23 @@ class RegistrationEngine:
             self._log(f"提交密码状态: {response.status_code}")
 
             if response.status_code != 200:
-                self._log(f"密码注册失败: {response.text[:200]}", "warning")
+                error_text = response.text[:500]
+                self._log(f"密码注册失败: {error_text}", "warning")
+
+                # 解析错误信息，判断是否是邮箱已注册
+                try:
+                    error_json = response.json()
+                    error_msg = error_json.get("error", {}).get("message", "")
+                    error_code = error_json.get("error", {}).get("code", "")
+
+                    # 检测邮箱已注册的情况
+                    if "already" in error_msg.lower() or "exists" in error_msg.lower() or error_code == "user_exists":
+                        self._log(f"邮箱 {self.email} 可能已在 OpenAI 注册过", "error")
+                        # 标记此邮箱为已注册状态
+                        self._mark_email_as_registered()
+                except Exception:
+                    pass
+
                 return False, None
 
             return True, password
@@ -305,6 +321,27 @@ class RegistrationEngine:
         except Exception as e:
             self._log(f"密码注册失败: {e}", "error")
             return False, None
+
+    def _mark_email_as_registered(self):
+        """标记邮箱为已注册状态（用于防止重复尝试）"""
+        try:
+            with get_db() as db:
+                # 检查是否已存在该邮箱的记录
+                existing = crud.get_account_by_email(db, self.email)
+                if not existing:
+                    # 创建一个失败记录，标记该邮箱已注册过
+                    crud.create_account(
+                        db,
+                        email=self.email,
+                        password="",  # 空密码表示未成功注册
+                        email_service=self.email_service.service_type.value,
+                        email_service_id=self.email_info.get("service_id") if self.email_info else None,
+                        status="failed",
+                        extra_data={"register_failed_reason": "email_already_registered_on_openai"}
+                    )
+                    self._log(f"已在数据库中标记邮箱 {self.email} 为已注册状态")
+        except Exception as e:
+            logger.warning(f"标记邮箱状态失败: {e}")
 
     def _send_verification_code(self) -> bool:
         """发送验证码"""
