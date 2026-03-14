@@ -8,6 +8,7 @@ let currentTask = null;
 let currentBatch = null;
 let logPollingInterval = null;
 let batchPollingInterval = null;
+let accountsPollingInterval = null;
 let isBatchMode = false;
 let availableServices = {
     tempmail: { available: true, services: [] },
@@ -19,7 +20,6 @@ let availableServices = {
 const elements = {
     form: document.getElementById('registration-form'),
     emailService: document.getElementById('email-service'),
-    proxy: document.getElementById('proxy'),
     regMode: document.getElementById('reg-mode'),
     batchCountGroup: document.getElementById('batch-count-group'),
     batchCount: document.getElementById('batch-count'),
@@ -28,8 +28,8 @@ const elements = {
     intervalMax: document.getElementById('interval-max'),
     startBtn: document.getElementById('start-btn'),
     cancelBtn: document.getElementById('cancel-btn'),
-    taskStatusCard: document.getElementById('task-status-card'),
-    batchStatusCard: document.getElementById('batch-status-card'),
+    taskStatusRow: document.getElementById('task-status-row'),
+    batchProgressSection: document.getElementById('batch-progress-section'),
     consoleLog: document.getElementById('console-log'),
     clearLogBtn: document.getElementById('clear-log-btn'),
     // 任务状态
@@ -39,18 +39,23 @@ const elements = {
     taskService: document.getElementById('task-service'),
     taskStatusBadge: document.getElementById('task-status-badge'),
     // 批量状态
-    batchProgress: document.getElementById('batch-progress'),
+    batchProgressText: document.getElementById('batch-progress-text'),
+    batchProgressPercent: document.getElementById('batch-progress-percent'),
     progressBar: document.getElementById('progress-bar'),
     batchSuccess: document.getElementById('batch-success'),
     batchFailed: document.getElementById('batch-failed'),
-    batchRemaining: document.getElementById('batch-remaining')
+    batchRemaining: document.getElementById('batch-remaining'),
+    // 已注册账号
+    recentAccountsTable: document.getElementById('recent-accounts-table'),
+    refreshAccountsBtn: document.getElementById('refresh-accounts-btn')
 };
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
-    loadSavedProxy();
     loadAvailableServices();
+    loadRecentAccounts();
+    startAccountsPolling();
 });
 
 // 事件监听
@@ -71,18 +76,12 @@ function initEventListeners() {
     elements.clearLogBtn.addEventListener('click', () => {
         elements.consoleLog.innerHTML = '<div class="log-line info">[系统] 日志已清空</div>';
     });
-}
 
-// 加载保存的代理设置
-async function loadSavedProxy() {
-    try {
-        const settings = await api.get('/settings');
-        if (settings.proxy?.host) {
-            elements.proxy.value = `${settings.proxy.type}://${settings.proxy.host}:${settings.proxy.port}`;
-        }
-    } catch (error) {
-        // 忽略错误
-    }
+    // 刷新账号列表
+    elements.refreshAccountsBtn.addEventListener('click', () => {
+        loadRecentAccounts();
+        toast.info('已刷新');
+    });
 }
 
 // 加载可用的邮箱服务
@@ -143,7 +142,7 @@ function updateEmailServiceOptions() {
 
         const option = document.createElement('option');
         option.value = '';
-        option.textContent = '请先在设置中导入账户';
+        option.textContent = '请先在邮箱服务页面导入账户';
         option.disabled = true;
         optgroup.appendChild(option);
 
@@ -173,7 +172,7 @@ function updateEmailServiceOptions() {
 
         const option = document.createElement('option');
         option.value = '';
-        option.textContent = '请先在设置中添加服务';
+        option.textContent = '请先在邮箱服务页面添加服务';
         option.disabled = true;
         optgroup.appendChild(option);
 
@@ -223,7 +222,6 @@ async function handleStartRegistration(e) {
     }
 
     const [emailServiceType, serviceId] = selectedValue.split(':');
-    const proxy = elements.proxy.value.trim() || null;
 
     // 禁用开始按钮
     elements.startBtn.disabled = true;
@@ -232,10 +230,9 @@ async function handleStartRegistration(e) {
     // 清空日志
     elements.consoleLog.innerHTML = '';
 
-    // 构建请求数据
+    // 构建请求数据（代理从设置中自动获取）
     const requestData = {
-        email_service_type: emailServiceType,
-        proxy: proxy
+        email_service_type: emailServiceType
     };
 
     // 如果选择了数据库中的服务，传递 service_id
@@ -365,6 +362,8 @@ function startLogPolling(taskUuid) {
                 if (data.status === 'completed') {
                     addLog('success', '[成功] 注册成功！');
                     toast.success('注册成功！');
+                    // 刷新账号列表
+                    loadRecentAccounts();
                 } else if (data.status === 'failed') {
                     addLog('error', '[错误] 注册失败');
                     toast.error('注册失败');
@@ -401,6 +400,8 @@ function startBatchPolling(batchId) {
                 addLog('info', `[完成] 批量任务完成！成功: ${data.success}, 失败: ${data.failed}`);
                 if (data.success > 0) {
                     toast.success(`批量注册完成，成功 ${data.success} 个`);
+                    // 刷新账号列表
+                    loadRecentAccounts();
                 } else {
                     toast.warning('批量注册完成，但没有成功注册任何账号');
                 }
@@ -421,9 +422,10 @@ function stopBatchPolling() {
 
 // 显示任务状态
 function showTaskStatus(task) {
-    elements.taskStatusCard.style.display = 'block';
-    elements.batchStatusCard.style.display = 'none';
-    elements.taskId.textContent = task.task_uuid;
+    elements.taskStatusRow.style.display = 'grid';
+    elements.batchProgressSection.style.display = 'none';
+    elements.taskStatusBadge.style.display = 'inline-flex';
+    elements.taskId.textContent = task.task_uuid.substring(0, 8) + '...';
     elements.taskEmail.textContent = '-';
     elements.taskService.textContent = '-';
 }
@@ -446,9 +448,11 @@ function updateTaskStatus(status) {
 
 // 显示批量状态
 function showBatchStatus(batch) {
-    elements.batchStatusCard.style.display = 'block';
-    elements.taskStatusCard.style.display = 'none';
-    elements.batchProgress.textContent = `0/${batch.count}`;
+    elements.batchProgressSection.style.display = 'block';
+    elements.taskStatusRow.style.display = 'none';
+    elements.taskStatusBadge.style.display = 'none';
+    elements.batchProgressText.textContent = `0/${batch.count}`;
+    elements.batchProgressPercent.textContent = '0%';
     elements.progressBar.style.width = '0%';
     elements.batchSuccess.textContent = '0';
     elements.batchFailed.textContent = '0';
@@ -461,8 +465,9 @@ function showBatchStatus(batch) {
 
 // 更新批量进度
 function updateBatchProgress(data) {
-    const progress = (data.completed / data.total * 100).toFixed(0);
-    elements.batchProgress.textContent = data.progress || `${data.completed}/${data.total}`;
+    const progress = ((data.completed / data.total) * 100).toFixed(0);
+    elements.batchProgressText.textContent = `${data.completed}/${data.total}`;
+    elements.batchProgressPercent.textContent = `${progress}%`;
     elements.progressBar.style.width = `${progress}%`;
     elements.batchSuccess.textContent = data.success;
     elements.batchFailed.textContent = data.failed;
@@ -483,6 +488,63 @@ function updateBatchProgress(data) {
         elements.batchSuccess.dataset.last = data.success;
         elements.batchFailed.dataset.last = data.failed;
     }
+}
+
+// 加载最近注册的账号
+async function loadRecentAccounts() {
+    try {
+        const data = await api.get('/accounts?page=1&page_size=10');
+
+        if (data.accounts.length === 0) {
+            elements.recentAccountsTable.innerHTML = `
+                <tr>
+                    <td colspan="5">
+                        <div class="empty-state" style="padding: var(--spacing-md);">
+                            <div class="empty-state-icon">📭</div>
+                            <div class="empty-state-title">暂无已注册账号</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        elements.recentAccountsTable.innerHTML = data.accounts.map(account => `
+            <tr data-id="${account.id}">
+                <td>${account.id}</td>
+                <td>
+                    <span title="${escapeHtml(account.email)}">${escapeHtml(account.email)}</span>
+                </td>
+                <td class="password-cell">
+                    ${account.password ? `<span class="password-hidden" title="点击查看">${escapeHtml(account.password.substring(0, 8))}...</span>` : '-'}
+                </td>
+                <td>
+                    <span class="status-badge ${getStatusClass('account', account.status)}" style="font-size: 0.7rem;">
+                        ${getStatusText('account', account.status)}
+                    </span>
+                </td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${escapeHtml(account.email)}')" title="复制邮箱">
+                            📋
+                        </button>
+                        ${account.password ? `<button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${escapeHtml(account.password)}')" title="复制密码">🔑</button>` : ''}
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        console.error('加载账号列表失败:', error);
+    }
+}
+
+// 开始账号列表轮询
+function startAccountsPolling() {
+    // 每30秒刷新一次账号列表
+    accountsPollingInterval = setInterval(() => {
+        loadRecentAccounts();
+    }, 30000);
 }
 
 // 添加日志

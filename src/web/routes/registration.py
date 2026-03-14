@@ -7,14 +7,14 @@ import logging
 import uuid
 import random
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from ...database import crud
 from ...database.session import get_db
-from ...database.models import RegistrationTask
+from ...database.models import RegistrationTask, Proxy
 from ...core.register import RegistrationEngine, RegistrationResult
 from ...services import EmailServiceFactory, EmailServiceType
 from ...config.settings import get_settings
@@ -26,6 +26,38 @@ router = APIRouter()
 running_tasks: dict = {}
 # 批量任务存储
 batch_tasks: Dict[str, dict] = {}
+
+
+# ============== Proxy Helper Functions ==============
+
+def get_proxy_for_registration(db) -> Tuple[Optional[str], Optional[int]]:
+    """
+    获取用于注册的代理
+
+    策略：
+    1. 优先从代理列表中随机选择一个启用的代理
+    2. 如果代理列表为空，使用系统设置中的默认代理
+
+    Returns:
+        Tuple[proxy_url, proxy_id]: 代理 URL 和代理 ID（如果来自代理列表）
+    """
+    # 先尝试从代理列表中获取
+    proxy = crud.get_random_proxy(db)
+    if proxy:
+        return proxy.proxy_url, proxy.id
+
+    # 代理列表为空，使用系统设置中的默认代理
+    settings = get_settings()
+    if settings.proxy_enabled and settings.proxy_url:
+        return settings.proxy_url, None
+
+    return None, None
+
+
+def update_proxy_usage(db, proxy_id: Optional[int]):
+    """更新代理的使用时间"""
+    if proxy_id:
+        crud.update_proxy_last_used(db, proxy_id)
 
 
 # ============== Pydantic Models ==============
@@ -114,6 +146,20 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
                 logger.error(f"任务不存在: {task_uuid}")
                 return
 
+            # 确定使用的代理
+            # 如果前端传入了代理参数，使用传入的
+            # 否则从代理列表或系统设置中获取
+            actual_proxy_url = proxy
+            proxy_id = None
+
+            if not actual_proxy_url:
+                actual_proxy_url, proxy_id = get_proxy_for_registration(db)
+                if actual_proxy_url:
+                    logger.info(f"任务 {task_uuid} 使用代理: {actual_proxy_url[:50]}...")
+
+            # 更新任务的代理记录
+            crud.update_registration_task(db, task_uuid, proxy=actual_proxy_url)
+
             # 创建邮箱服务
             service_type = EmailServiceType(email_service_type)
             settings = get_settings()
@@ -140,7 +186,7 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         "base_url": settings.tempmail_base_url,
                         "timeout": settings.tempmail_timeout,
                         "max_retries": settings.tempmail_max_retries,
-                        "proxy_url": proxy,
+                        "proxy_url": actual_proxy_url,
                     }
                 elif service_type == EmailServiceType.CUSTOM_DOMAIN:
                     # 检查数据库中是否有可用的自定义域名服务
@@ -158,7 +204,7 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         config = {
                             "base_url": settings.custom_domain_base_url,
                             "api_key": settings.custom_domain_api_key.get_secret_value() if settings.custom_domain_api_key else "",
-                            "proxy_url": proxy,
+                            "proxy_url": actual_proxy_url,
                         }
                     else:
                         raise ValueError("没有可用的自定义域名邮箱服务，请先在设置中配置")
@@ -188,7 +234,7 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
             engine = RegistrationEngine(
                 email_service=email_service,
-                proxy_url=proxy,
+                proxy_url=actual_proxy_url,
                 callback_logger=log_callback,
                 task_uuid=task_uuid
             )
@@ -197,6 +243,9 @@ async def run_registration_task(task_uuid: str, email_service_type: str, proxy: 
             result = engine.run()
 
             if result.success:
+                # 更新代理使用时间
+                update_proxy_usage(db, proxy_id)
+
                 # 保存到数据库
                 engine.save_to_database(result)
 

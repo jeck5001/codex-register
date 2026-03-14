@@ -28,7 +28,16 @@ const elements = {
     outlookImportData: document.getElementById('outlook-import-data'),
     importResult: document.getElementById('import-result'),
     // 批量操作
-    selectAllServices: document.getElementById('select-all-services')
+    selectAllServices: document.getElementById('select-all-services'),
+    // 代理列表
+    proxiesTable: document.getElementById('proxies-table'),
+    addProxyBtn: document.getElementById('add-proxy-btn'),
+    testAllProxiesBtn: document.getElementById('test-all-proxies-btn'),
+    addProxyModal: document.getElementById('add-proxy-modal'),
+    proxyItemForm: document.getElementById('proxy-item-form'),
+    closeProxyModal: document.getElementById('close-proxy-modal'),
+    cancelProxyBtn: document.getElementById('cancel-proxy-btn'),
+    proxyModalTitle: document.getElementById('proxy-modal-title')
 };
 
 // 选中的服务 ID
@@ -40,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
     loadEmailServices();
     loadDatabaseInfo();
+    loadProxies();
     initEventListeners();
 });
 
@@ -61,47 +71,69 @@ function initTabs() {
 // 事件监听
 function initEventListeners() {
     // 代理表单
-    elements.proxyForm.addEventListener('submit', handleSaveProxy);
+    if (elements.proxyForm) {
+        elements.proxyForm.addEventListener('submit', handleSaveProxy);
+    }
 
     // 测试代理
-    elements.testProxyBtn.addEventListener('click', handleTestProxy);
+    if (elements.testProxyBtn) {
+        elements.testProxyBtn.addEventListener('click', handleTestProxy);
+    }
 
     // 注册配置表单
-    elements.registrationForm.addEventListener('submit', handleSaveRegistration);
+    if (elements.registrationForm) {
+        elements.registrationForm.addEventListener('submit', handleSaveRegistration);
+    }
 
     // 备份数据库
-    elements.backupBtn.addEventListener('click', handleBackup);
+    if (elements.backupBtn) {
+        elements.backupBtn.addEventListener('click', handleBackup);
+    }
 
     // 清理数据
-    elements.cleanupBtn.addEventListener('click', handleCleanup);
+    if (elements.cleanupBtn) {
+        elements.cleanupBtn.addEventListener('click', handleCleanup);
+    }
 
     // 添加邮箱服务
-    elements.addEmailServiceBtn.addEventListener('click', () => {
-        elements.addServiceModal.classList.add('active');
-        loadServiceConfigFields(elements.serviceType.value);
-    });
+    if (elements.addEmailServiceBtn) {
+        elements.addEmailServiceBtn.addEventListener('click', () => {
+            elements.addServiceModal.classList.add('active');
+            loadServiceConfigFields(elements.serviceType.value);
+        });
+    }
 
-    elements.closeServiceModal.addEventListener('click', () => {
-        elements.addServiceModal.classList.remove('active');
-    });
-
-    elements.cancelAddService.addEventListener('click', () => {
-        elements.addServiceModal.classList.remove('active');
-    });
-
-    elements.addServiceModal.addEventListener('click', (e) => {
-        if (e.target === elements.addServiceModal) {
+    if (elements.closeServiceModal) {
+        elements.closeServiceModal.addEventListener('click', () => {
             elements.addServiceModal.classList.remove('active');
-        }
-    });
+        });
+    }
+
+    if (elements.cancelAddService) {
+        elements.cancelAddService.addEventListener('click', () => {
+            elements.addServiceModal.classList.remove('active');
+        });
+    }
+
+    if (elements.addServiceModal) {
+        elements.addServiceModal.addEventListener('click', (e) => {
+            if (e.target === elements.addServiceModal) {
+                elements.addServiceModal.classList.remove('active');
+            }
+        });
+    }
 
     // 服务类型切换
-    elements.serviceType.addEventListener('change', (e) => {
-        loadServiceConfigFields(e.target.value);
-    });
+    if (elements.serviceType) {
+        elements.serviceType.addEventListener('change', (e) => {
+            loadServiceConfigFields(e.target.value);
+        });
+    }
 
     // 添加服务表单
-    elements.addServiceForm.addEventListener('submit', handleAddService);
+    if (elements.addServiceForm) {
+        elements.addServiceForm.addEventListener('submit', handleAddService);
+    }
 
     // Outlook 批量导入展开/折叠
     if (elements.toggleImportBtn) {
@@ -133,6 +165,35 @@ function initEventListeners() {
             updateSelectedServices();
         });
     }
+
+    // 代理列表相关
+    if (elements.addProxyBtn) {
+        elements.addProxyBtn.addEventListener('click', () => openProxyModal());
+    }
+
+    if (elements.testAllProxiesBtn) {
+        elements.testAllProxiesBtn.addEventListener('click', handleTestAllProxies);
+    }
+
+    if (elements.closeProxyModal) {
+        elements.closeProxyModal.addEventListener('click', closeProxyModal);
+    }
+
+    if (elements.cancelProxyBtn) {
+        elements.cancelProxyBtn.addEventListener('click', closeProxyModal);
+    }
+
+    if (elements.addProxyModal) {
+        elements.addProxyModal.addEventListener('click', (e) => {
+            if (e.target === elements.addProxyModal) {
+                closeProxyModal();
+            }
+        });
+    }
+
+    if (elements.proxyItemForm) {
+        elements.proxyItemForm.addEventListener('submit', handleSaveProxyItem);
+    }
 }
 
 // 加载设置
@@ -162,26 +223,34 @@ async function loadSettings() {
 
 // 加载邮箱服务
 async function loadEmailServices() {
+    // 检查元素是否存在
+    if (!elements.emailServicesTable) return;
+
     try {
         const data = await api.get('/email-services');
         renderEmailServices(data.services);
     } catch (error) {
         console.error('加载邮箱服务失败:', error);
-        elements.emailServicesTable.innerHTML = `
-            <tr>
-                <td colspan="7">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">❌</div>
-                        <div class="empty-state-title">加载失败</div>
-                    </div>
-                </td>
-            </tr>
-        `;
+        if (elements.emailServicesTable) {
+            elements.emailServicesTable.innerHTML = `
+                <tr>
+                    <td colspan="7">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">❌</div>
+                            <div class="empty-state-title">加载失败</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
     }
 }
 
 // 渲染邮箱服务
 function renderEmailServices(services) {
+    // 检查元素是否存在
+    if (!elements.emailServicesTable) return;
+
     if (services.length === 0) {
         elements.emailServicesTable.innerHTML = `
             <tr>
@@ -271,9 +340,24 @@ async function handleTestProxy() {
     elements.testProxyBtn.innerHTML = '<span class="loading-spinner"></span> 测试中...';
 
     try {
-        // TODO: 实现代理测试 API
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        toast.info('代理测试功能待实现');
+        const data = {
+            enabled: document.getElementById('proxy-enabled').checked,
+            type: document.getElementById('proxy-type').value,
+            host: document.getElementById('proxy-host').value,
+            port: parseInt(document.getElementById('proxy-port').value),
+            username: document.getElementById('proxy-username').value || null,
+            password: document.getElementById('proxy-password').value || null,
+        };
+
+        const result = await api.post('/settings/proxy/test', data);
+
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+    } catch (error) {
+        toast.error('测试失败: ' + error.message);
     } finally {
         elements.testProxyBtn.disabled = false;
         elements.testProxyBtn.textContent = '🔌 测试连接';
@@ -542,4 +626,200 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+
+// ============================================================================
+// 代理列表管理
+// ============================================================================
+
+// 加载代理列表
+async function loadProxies() {
+    try {
+        const data = await api.get('/settings/proxies');
+        renderProxies(data.proxies);
+    } catch (error) {
+        console.error('加载代理列表失败:', error);
+        elements.proxiesTable.innerHTML = `
+            <tr>
+                <td colspan="7">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">❌</div>
+                        <div class="empty-state-title">加载失败</div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// 渲染代理列表
+function renderProxies(proxies) {
+    if (!proxies || proxies.length === 0) {
+        elements.proxiesTable.innerHTML = `
+            <tr>
+                <td colspan="7">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🌐</div>
+                        <div class="empty-state-title">暂无代理</div>
+                        <div class="empty-state-description">点击"添加代理"按钮添加代理服务器</div>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    elements.proxiesTable.innerHTML = proxies.map(proxy => `
+        <tr data-proxy-id="${proxy.id}">
+            <td>${proxy.id}</td>
+            <td>${escapeHtml(proxy.name)}</td>
+            <td><span class="badge">${proxy.type.toUpperCase()}</span></td>
+            <td><code>${escapeHtml(proxy.host)}:${proxy.port}</code></td>
+            <td>
+                <span class="status-badge ${proxy.enabled ? 'active' : 'disabled'}">
+                    ${proxy.enabled ? '已启用' : '已禁用'}
+                </span>
+            </td>
+            <td>${format.date(proxy.last_used)}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-ghost btn-sm" onclick="testProxyItem(${proxy.id})" title="测试">
+                        🔌
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="editProxyItem(${proxy.id})" title="编辑">
+                        ✏️
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="toggleProxyItem(${proxy.id}, ${!proxy.enabled})" title="${proxy.enabled ? '禁用' : '启用'}">
+                        ${proxy.enabled ? '🔒' : '🔓'}
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="deleteProxyItem(${proxy.id})" title="删除">
+                        🗑️
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// 打开代理模态框
+function openProxyModal(proxy = null) {
+    elements.proxyModalTitle.textContent = proxy ? '编辑代理' : '添加代理';
+    elements.proxyItemForm.reset();
+
+    document.getElementById('proxy-item-id').value = proxy ? proxy.id : '';
+
+    if (proxy) {
+        document.getElementById('proxy-item-name').value = proxy.name || '';
+        document.getElementById('proxy-item-type').value = proxy.type || 'http';
+        document.getElementById('proxy-item-host').value = proxy.host || '';
+        document.getElementById('proxy-item-port').value = proxy.port || '';
+        document.getElementById('proxy-item-username').value = proxy.username || '';
+        document.getElementById('proxy-item-password').value = '';
+    }
+
+    elements.addProxyModal.classList.add('active');
+}
+
+// 关闭代理模态框
+function closeProxyModal() {
+    elements.addProxyModal.classList.remove('active');
+    elements.proxyItemForm.reset();
+}
+
+// 保存代理
+async function handleSaveProxyItem(e) {
+    e.preventDefault();
+
+    const proxyId = document.getElementById('proxy-item-id').value;
+    const data = {
+        name: document.getElementById('proxy-item-name').value,
+        type: document.getElementById('proxy-item-type').value,
+        host: document.getElementById('proxy-item-host').value,
+        port: parseInt(document.getElementById('proxy-item-port').value),
+        username: document.getElementById('proxy-item-username').value || null,
+        password: document.getElementById('proxy-item-password').value || null,
+        enabled: true
+    };
+
+    try {
+        if (proxyId) {
+            await api.patch(`/settings/proxies/${proxyId}`, data);
+            toast.success('代理已更新');
+        } else {
+            await api.post('/settings/proxies', data);
+            toast.success('代理已添加');
+        }
+        closeProxyModal();
+        loadProxies();
+    } catch (error) {
+        toast.error('保存失败: ' + error.message);
+    }
+}
+
+// 编辑代理
+async function editProxyItem(id) {
+    try {
+        const proxy = await api.get(`/settings/proxies/${id}`);
+        openProxyModal(proxy);
+    } catch (error) {
+        toast.error('获取代理信息失败');
+    }
+}
+
+// 测试单个代理
+async function testProxyItem(id) {
+    try {
+        const result = await api.post(`/settings/proxies/${id}/test`);
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+    } catch (error) {
+        toast.error('测试失败: ' + error.message);
+    }
+}
+
+// 切换代理状态
+async function toggleProxyItem(id, enabled) {
+    try {
+        const endpoint = enabled ? 'enable' : 'disable';
+        await api.post(`/settings/proxies/${id}/${endpoint}`);
+        toast.success(enabled ? '代理已启用' : '代理已禁用');
+        loadProxies();
+    } catch (error) {
+        toast.error('操作失败: ' + error.message);
+    }
+}
+
+// 删除代理
+async function deleteProxyItem(id) {
+    const confirmed = await confirm('确定要删除此代理吗？');
+    if (!confirmed) return;
+
+    try {
+        await api.delete(`/settings/proxies/${id}`);
+        toast.success('代理已删除');
+        loadProxies();
+    } catch (error) {
+        toast.error('删除失败: ' + error.message);
+    }
+}
+
+// 测试所有代理
+async function handleTestAllProxies() {
+    elements.testAllProxiesBtn.disabled = true;
+    elements.testAllProxiesBtn.innerHTML = '<span class="loading-spinner"></span> 测试中...';
+
+    try {
+        const result = await api.post('/settings/proxies/test-all');
+        toast.info(`测试完成: 成功 ${result.success}, 失败 ${result.failed}`);
+        loadProxies();
+    } catch (error) {
+        toast.error('测试失败: ' + error.message);
+    } finally {
+        elements.testAllProxiesBtn.disabled = false;
+        elements.testAllProxiesBtn.textContent = '🔌 测试全部';
+    }
 }

@@ -17,6 +17,7 @@
             <div class="nav-links">
                 <a href="/" class="nav-link">注册</a>
                 <a href="/accounts" class="nav-link">账号管理</a>
+                <a href="/email-services" class="nav-link">邮箱服务</a>
                 <a href="/settings" class="nav-link active">设置</a>
             </div>
             <button class="theme-toggle" onclick="theme.toggle()" title="切换主题">
@@ -34,16 +35,17 @@
             <!-- 设置标签页 -->
             <div class="tabs">
                 <button class="tab-btn active" data-tab="proxy">🌐 代理设置</button>
-                <button class="tab-btn" data-tab="email">📧 邮箱服务</button>
                 <button class="tab-btn" data-tab="registration">⚙️ 注册配置</button>
                 <button class="tab-btn" data-tab="database">💾 数据库</button>
             </div>
 
             <!-- 代理设置 -->
             <div class="tab-content active" id="proxy-tab">
+                <!-- 默认代理配置 -->
                 <div class="card">
                     <div class="card-header">
-                        <h3>代理配置</h3>
+                        <h3>默认代理配置</h3>
+                        <span class="hint">当代理列表为空时使用此配置</span>
                     </div>
                     <div class="card-body">
                         <form id="proxy-form">
@@ -93,80 +95,93 @@
                         </form>
                     </div>
                 </div>
-            </div>
 
-            <!-- 邮箱服务 -->
-            <div class="tab-content" id="email-tab">
-                <!-- Outlook 批量导入 -->
-                <div class="card" id="outlook-import-card">
+                <!-- 代理列表 -->
+                <div class="card" style="margin-top: var(--spacing-lg);">
                     <div class="card-header">
-                        <h3>📥 Outlook 批量导入</h3>
-                        <button class="btn btn-ghost btn-sm" id="toggle-import-btn">展开</button>
-                    </div>
-                    <div class="card-body" id="outlook-import-body" style="display: none;">
-                        <div class="import-info">
-                            <p><strong>支持格式：</strong></p>
-                            <ul>
-                                <li><code>邮箱----密码</code> （密码认证）</li>
-                                <li><code>邮箱----密码----client_id----refresh_token</code> （XOAUTH2 认证，推荐）</li>
-                            </ul>
-                            <p>每行一个账户，使用四个连字符（----）分隔字段。以 # 开头的行将被忽略。</p>
+                        <h3>代理列表</h3>
+                        <div style="display: flex; gap: var(--spacing-sm);">
+                            <button class="btn btn-secondary btn-sm" id="test-all-proxies-btn">🔌 测试全部</button>
+                            <button class="btn btn-primary btn-sm" id="add-proxy-btn">➕ 添加代理</button>
                         </div>
-                        <div class="form-group">
-                            <label for="outlook-import-data">批量导入数据</label>
-                            <textarea id="outlook-import-data" rows="8" placeholder="example@outlook.com----password123&#10;test@outlook.com----password456----client_id----refresh_token"></textarea>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="outlook-import-enabled" checked>
-                                    导入后启用
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label for="outlook-import-priority">优先级</label>
-                                <input type="number" id="outlook-import-priority" value="0" min="0">
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-primary" id="outlook-import-btn">📥 开始导入</button>
-                            <button type="button" class="btn btn-secondary" id="clear-import-btn">清空</button>
-                        </div>
-                        <div id="import-result" style="display: none; margin-top: var(--spacing-md);"></div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <h3>邮箱服务配置</h3>
-                        <button class="btn btn-primary btn-sm" id="add-email-service-btn">➕ 添加服务</button>
                     </div>
                     <div class="card-body" style="padding: 0;">
                         <div class="table-container">
                             <table class="data-table">
                                 <thead>
                                     <tr>
-                                        <th style="width: 40px;"><input type="checkbox" id="select-all-services"></th>
+                                        <th style="width: 50px;">ID</th>
                                         <th>名称</th>
-                                        <th style="width: 120px;">类型</th>
-                                        <th style="width: 100px;">状态</th>
-                                        <th style="width: 80px;">优先级</th>
-                                        <th style="width: 160px;">最后使用</th>
-                                        <th style="width: 180px;">操作</th>
+                                        <th>类型</th>
+                                        <th>地址</th>
+                                        <th style="width: 80px;">状态</th>
+                                        <th style="width: 120px;">最后使用</th>
+                                        <th style="width: 150px;">操作</th>
                                     </tr>
                                 </thead>
-                                <tbody id="email-services-table">
+                                <tbody id="proxies-table">
                                     <tr>
                                         <td colspan="7">
                                             <div class="empty-state">
-                                                <div class="skeleton skeleton-text"></div>
-                                                <div class="skeleton skeleton-text" style="width: 80%;"></div>
+                                                <div class="empty-state-icon">🌐</div>
+                                                <div class="empty-state-title">暂无代理</div>
+                                                <div class="empty-state-description">点击"添加代理"按钮添加代理服务器</div>
                                             </div>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 添加代理模态框 -->
+            <div class="modal" id="add-proxy-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="proxy-modal-title">添加代理</h3>
+                        <button class="modal-close" id="close-proxy-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="proxy-item-form">
+                            <input type="hidden" id="proxy-item-id">
+                            <div class="form-group">
+                                <label for="proxy-item-name">名称</label>
+                                <input type="text" id="proxy-item-name" name="name" required placeholder="例如：美国代理 1">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="proxy-item-type">类型</label>
+                                    <select id="proxy-item-type" name="type">
+                                        <option value="http">HTTP</option>
+                                        <option value="socks5">SOCKS5</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="proxy-item-host">主机地址</label>
+                                    <input type="text" id="proxy-item-host" name="host" required placeholder="127.0.0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="proxy-item-port">端口</label>
+                                    <input type="number" id="proxy-item-port" name="port" required placeholder="7890">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="proxy-item-username">用户名 (可选)</label>
+                                    <input type="text" id="proxy-item-username" name="username" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label for="proxy-item-password">密码 (可选)</label>
+                                    <input type="password" id="proxy-item-password" name="password" autocomplete="new-password">
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" id="cancel-proxy-btn">取消</button>
+                                <button type="submit" class="btn btn-primary">💾 保存</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -250,42 +265,6 @@
                 </div>
             </div>
         </main>
-    </div>
-
-    <!-- 添加邮箱服务模态框 -->
-    <div class="modal" id="add-service-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>➕ 添加邮箱服务</h3>
-                <button class="modal-close" id="close-service-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form id="add-service-form">
-                    <div class="form-group">
-                        <label for="service-type">服务类型</label>
-                        <select id="service-type" name="service_type" required>
-                            <option value="tempmail">Tempmail.lol</option>
-                            <option value="outlook">Outlook</option>
-                            <option value="custom_domain">自定义域名</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="service-name">服务名称</label>
-                        <input type="text" id="service-name" name="name" required placeholder="例如：我的 Outlook 账号">
-                    </div>
-
-                    <div id="service-config-fields">
-                        <!-- 根据类型动态加载 -->
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">添加</button>
-                        <button type="button" class="btn btn-secondary" id="cancel-add-service">取消</button>
-                    </div>
-                </form>
-            </div>
-        </div>
     </div>
 
     <script src="/static/js/utils.js"></script>

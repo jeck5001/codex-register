@@ -21,6 +21,8 @@ const elements = {
     filterService: document.getElementById('filter-service'),
     searchInput: document.getElementById('search-input'),
     refreshBtn: document.getElementById('refresh-btn'),
+    batchRefreshBtn: document.getElementById('batch-refresh-btn'),
+    batchValidateBtn: document.getElementById('batch-validate-btn'),
     batchDeleteBtn: document.getElementById('batch-delete-btn'),
     exportBtn: document.getElementById('export-btn'),
     exportMenu: document.getElementById('export-menu'),
@@ -74,6 +76,12 @@ function initEventListeners() {
         loadAccounts();
         toast.info('已刷新');
     });
+
+    // 批量刷新Token
+    elements.batchRefreshBtn.addEventListener('click', handleBatchRefresh);
+
+    // 批量验证Token
+    elements.batchValidateBtn.addEventListener('click', handleBatchValidate);
 
     // 批量删除
     elements.batchDeleteBtn.addEventListener('click', handleBatchDelete);
@@ -173,7 +181,7 @@ async function loadAccounts() {
     // 显示加载状态
     elements.table.innerHTML = `
         <tr>
-            <td colspan="7">
+            <td colspan="8">
                 <div class="empty-state">
                     <div class="skeleton skeleton-text" style="width: 60%;"></div>
                     <div class="skeleton skeleton-text" style="width: 80%;"></div>
@@ -209,7 +217,7 @@ async function loadAccounts() {
         console.error('加载账号列表失败:', error);
         elements.table.innerHTML = `
             <tr>
-                <td colspan="7">
+                <td colspan="8">
                     <div class="empty-state">
                         <div class="empty-state-icon">❌</div>
                         <div class="empty-state-title">加载失败</div>
@@ -228,7 +236,7 @@ function renderAccounts(accounts) {
     if (accounts.length === 0) {
         elements.table.innerHTML = `
             <tr>
-                <td colspan="7">
+                <td colspan="8">
                     <div class="empty-state">
                         <div class="empty-state-icon">📭</div>
                         <div class="empty-state-title">暂无数据</div>
@@ -252,21 +260,30 @@ function renderAccounts(accounts) {
                     ${escapeHtml(account.email)}
                 </span>
             </td>
+            <td class="password-cell">
+                ${account.password
+                    ? `<span class="password-hidden" onclick="togglePassword(this, '${escapeHtml(account.password)}')" title="点击查看">${escapeHtml(account.password.substring(0, 4) + '****')}</span>`
+                    : '-'}
+            </td>
             <td>${getServiceTypeText(account.email_service)}</td>
             <td>
                 <span class="status-badge ${getStatusClass('account', account.status)}">
                     ${getStatusText('account', account.status)}
                 </span>
             </td>
-            <td>${format.date(account.registered_at)}</td>
+            <td>${format.date(account.last_refresh) || '-'}</td>
             <td>
                 <div class="action-buttons">
+                    <button class="btn btn-ghost btn-sm" onclick="refreshToken(${account.id})" title="刷新Token">
+                        🔄
+                    </button>
                     <button class="btn btn-ghost btn-sm" onclick="viewAccount(${account.id})" title="查看详情">
                         👁️
                     </button>
                     <button class="btn btn-ghost btn-sm" onclick="copyEmail('${escapeHtml(account.email)}')" title="复制邮箱">
                         📋
                     </button>
+                    ${account.password ? `<button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${escapeHtml(account.password)}')" title="复制密码">🔑</button>` : ''}
                     <button class="btn btn-ghost btn-sm" onclick="deleteAccount(${account.id}, '${escapeHtml(account.email)}')" title="删除">
                         🗑️
                     </button>
@@ -289,6 +306,19 @@ function renderAccounts(accounts) {
     });
 }
 
+// 切换密码显示
+function togglePassword(element, password) {
+    if (element.dataset.revealed === 'true') {
+        element.textContent = password.substring(0, 4) + '****';
+        element.classList.add('password-hidden');
+        element.dataset.revealed = 'false';
+    } else {
+        element.textContent = password;
+        element.classList.remove('password-hidden');
+        element.dataset.revealed = 'true';
+    }
+}
+
 // 更新分页
 function updatePagination() {
     const totalPages = Math.max(1, Math.ceil(totalAccounts / pageSize));
@@ -303,7 +333,74 @@ function updatePagination() {
 function updateBatchButtons() {
     const count = selectedAccounts.size;
     elements.batchDeleteBtn.disabled = count === 0;
-    elements.batchDeleteBtn.textContent = count > 0 ? `🗑️ 删除选中 (${count})` : '🗑️ 批量删除';
+    elements.batchRefreshBtn.disabled = count === 0;
+    elements.batchValidateBtn.disabled = count === 0;
+
+    elements.batchDeleteBtn.textContent = count > 0 ? `🗑️ 删除 (${count})` : '🗑️ 批量删除';
+    elements.batchRefreshBtn.textContent = count > 0 ? `🔄 刷新 (${count})` : '🔄 刷新Token';
+    elements.batchValidateBtn.textContent = count > 0 ? `✅ 验证 (${count})` : '✅ 验证Token';
+}
+
+// 刷新单个账号Token
+async function refreshToken(id) {
+    try {
+        toast.info('正在刷新Token...');
+        const result = await api.post(`/accounts/${id}/refresh`);
+
+        if (result.success) {
+            toast.success('Token刷新成功');
+            loadAccounts();
+        } else {
+            toast.error('刷新失败: ' + (result.error || '未知错误'));
+        }
+    } catch (error) {
+        toast.error('刷新失败: ' + error.message);
+    }
+}
+
+// 批量刷新Token
+async function handleBatchRefresh() {
+    if (selectedAccounts.size === 0) return;
+
+    const confirmed = await confirm(`确定要刷新选中的 ${selectedAccounts.size} 个账号的Token吗？`);
+    if (!confirmed) return;
+
+    elements.batchRefreshBtn.disabled = true;
+    elements.batchRefreshBtn.textContent = '刷新中...';
+
+    try {
+        const result = await api.post('/accounts/batch-refresh', {
+            ids: Array.from(selectedAccounts)
+        });
+
+        toast.success(`成功刷新 ${result.success_count} 个，失败 ${result.failed_count} 个`);
+        loadAccounts();
+    } catch (error) {
+        toast.error('批量刷新失败: ' + error.message);
+    } finally {
+        updateBatchButtons();
+    }
+}
+
+// 批量验证Token
+async function handleBatchValidate() {
+    if (selectedAccounts.size === 0) return;
+
+    elements.batchValidateBtn.disabled = true;
+    elements.batchValidateBtn.textContent = '验证中...';
+
+    try {
+        const result = await api.post('/accounts/batch-validate', {
+            ids: Array.from(selectedAccounts)
+        });
+
+        toast.info(`有效: ${result.valid_count}，无效: ${result.invalid_count}`);
+        loadAccounts();
+    } catch (error) {
+        toast.error('批量验证失败: ' + error.message);
+    } finally {
+        updateBatchButtons();
+    }
 }
 
 // 查看账号详情
@@ -324,6 +421,15 @@ async function viewAccount(id) {
                     </span>
                 </div>
                 <div class="info-item">
+                    <span class="label">密码</span>
+                    <span class="value">
+                        ${account.password
+                            ? `<code style="font-size: 0.75rem;">${escapeHtml(account.password)}</code>
+                               <button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${escapeHtml(account.password)}')" title="复制">📋</button>`
+                            : '-'}
+                    </span>
+                </div>
+                <div class="info-item">
                     <span class="label">邮箱服务</span>
                     <span class="value">${getServiceTypeText(account.email_service)}</span>
                 </div>
@@ -339,6 +445,10 @@ async function viewAccount(id) {
                     <span class="label">注册时间</span>
                     <span class="value">${format.date(account.registered_at)}</span>
                 </div>
+                <div class="info-item">
+                    <span class="label">最后刷新</span>
+                    <span class="value">${format.date(account.last_refresh) || '-'}</span>
+                </div>
                 <div class="info-item" style="grid-column: span 2;">
                     <span class="label">Account ID</span>
                     <span class="value" style="font-size: 0.75rem; word-break: break-all;">
@@ -349,6 +459,12 @@ async function viewAccount(id) {
                     <span class="label">Workspace ID</span>
                     <span class="value" style="font-size: 0.75rem; word-break: break-all;">
                         ${escapeHtml(account.workspace_id || '-')}
+                    </span>
+                </div>
+                <div class="info-item" style="grid-column: span 2;">
+                    <span class="label">Client ID</span>
+                    <span class="value" style="font-size: 0.75rem; word-break: break-all;">
+                        ${escapeHtml(account.client_id || '-')}
                     </span>
                 </div>
                 <div class="info-item" style="grid-column: span 2;">
@@ -365,6 +481,11 @@ async function viewAccount(id) {
                         ${tokens.refresh_token ? `<button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${escapeHtml(tokens.refresh_token)}')" style="margin-left: 8px;">📋</button>` : ''}
                     </div>
                 </div>
+            </div>
+            <div style="margin-top: var(--spacing-lg); display: flex; gap: var(--spacing-sm);">
+                <button class="btn btn-primary" onclick="refreshToken(${id}); elements.detailModal.classList.remove('active');">
+                    🔄 刷新Token
+                </button>
             </div>
         `;
 

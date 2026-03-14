@@ -43,6 +43,7 @@ class EmailServiceResponse(BaseModel):
     name: str
     enabled: bool
     priority: int
+    config: Optional[Dict[str, Any]] = None  # 过滤敏感信息后的配置
     last_used: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -82,6 +83,29 @@ class OutlookBatchImportResponse(BaseModel):
 
 # ============== Helper Functions ==============
 
+# 敏感字段列表，返回响应时需要过滤
+SENSITIVE_FIELDS = {'password', 'api_key', 'refresh_token', 'access_token'}
+
+def filter_sensitive_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """过滤敏感配置信息"""
+    if not config:
+        return {}
+
+    filtered = {}
+    for key, value in config.items():
+        if key in SENSITIVE_FIELDS:
+            # 敏感字段不返回，但标记是否存在
+            filtered[f"has_{key}"] = bool(value)
+        else:
+            filtered[key] = value
+
+    # 为 Outlook 计算是否有 OAuth
+    if config.get('client_id') and config.get('refresh_token'):
+        filtered['has_oauth'] = True
+
+    return filtered
+
+
 def service_to_response(service: EmailServiceModel) -> EmailServiceResponse:
     """转换服务模型为响应"""
     return EmailServiceResponse(
@@ -90,6 +114,7 @@ def service_to_response(service: EmailServiceModel) -> EmailServiceResponse:
         name=service.name,
         enabled=service.enabled,
         priority=service.priority,
+        config=filter_sensitive_config(service.config),
         last_used=service.last_used.isoformat() if service.last_used else None,
         created_at=service.created_at.isoformat() if service.created_at else None,
         updated_at=service.updated_at.isoformat() if service.updated_at else None,
@@ -97,6 +122,39 @@ def service_to_response(service: EmailServiceModel) -> EmailServiceResponse:
 
 
 # ============== API Endpoints ==============
+
+@router.get("/stats")
+async def get_email_services_stats():
+    """获取邮箱服务统计信息"""
+    with get_db() as db:
+        from sqlalchemy import func
+
+        # 按类型统计
+        type_stats = db.query(
+            EmailServiceModel.service_type,
+            func.count(EmailServiceModel.id)
+        ).group_by(EmailServiceModel.service_type).all()
+
+        # 启用数量
+        enabled_count = db.query(func.count(EmailServiceModel.id)).filter(
+            EmailServiceModel.enabled == True
+        ).scalar()
+
+        stats = {
+            'outlook_count': 0,
+            'custom_count': 0,
+            'tempmail_available': True,  # 临时邮箱始终可用
+            'enabled_count': enabled_count
+        }
+
+        for service_type, count in type_stats:
+            if service_type == 'outlook':
+                stats['outlook_count'] = count
+            elif service_type == 'custom_domain':
+                stats['custom_count'] = count
+
+        return stats
+
 
 @router.get("/types")
 async def get_service_types():
@@ -435,3 +493,36 @@ async def batch_delete_outlook(service_ids: List[int]):
         db.commit()
 
     return {"success": True, "deleted": deleted, "message": f"已删除 {deleted} 个服务"}
+
+
+# ============== 临时邮箱测试 ==============
+
+class TempmailTestRequest(BaseModel):
+    """临时邮箱测试请求"""
+    api_url: Optional[str] = None
+
+
+@router.post("/test-tempmail")
+async def test_tempmail_service(request: TempmailTestRequest):
+    """测试临时邮箱服务是否可用"""
+    try:
+        from ...services import EmailServiceFactory, EmailServiceType
+        from ...config.settings import get_settings
+
+        settings = get_settings()
+        base_url = request.api_url or settings.tempmail_base_url
+
+        config = {"base_url": base_url}
+        tempmail = EmailServiceFactory.create(EmailServiceType.TEMPMAIL, config)
+
+        # 检查服务健康状态
+        health = tempmail.check_health()
+
+        if health:
+            return {"success": True, "message": "临时邮箱连接正常"}
+        else:
+            return {"success": False, "message": "临时邮箱连接失败"}
+
+    except Exception as e:
+        logger.error(f"测试临时邮箱失败: {e}")
+        return {"success": False, "message": f"测试失败: {str(e)}"}

@@ -6,6 +6,33 @@
     <title>账号管理 - OpenAI 注册系统</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
+    <style>
+        .password-cell {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+        }
+        .password-hidden {
+            filter: blur(4px);
+            cursor: pointer;
+            transition: filter 0.2s;
+        }
+        .password-hidden:hover {
+            filter: blur(0);
+        }
+        .token-status {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .token-status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .token-status .dot.healthy { background: var(--success-color); }
+        .token-status .dot.warning { background: var(--warning-color); }
+        .token-status .dot.expired { background: var(--danger-color); }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -17,6 +44,7 @@
             <div class="nav-links">
                 <a href="/" class="nav-link">注册</a>
                 <a href="/accounts" class="nav-link active">账号管理</a>
+                <a href="/email-services" class="nav-link">邮箱服务</a>
                 <a href="/settings" class="nav-link">设置</a>
             </div>
             <button class="theme-toggle" onclick="theme.toggle()" title="切换主题">
@@ -77,6 +105,12 @@
                         <button class="btn btn-ghost" id="refresh-btn" title="刷新">
                             🔄 刷新
                         </button>
+                        <button class="btn btn-warning" id="batch-refresh-btn" disabled title="批量刷新Token">
+                            🔄 刷新Token
+                        </button>
+                        <button class="btn btn-info" id="batch-validate-btn" disabled title="批量验证Token">
+                            ✅ 验证Token
+                        </button>
                         <button class="btn btn-danger" id="batch-delete-btn" disabled>
                             🗑️ 批量删除
                         </button>
@@ -103,15 +137,16 @@
                                     <th style="width: 40px;"><input type="checkbox" id="select-all"></th>
                                     <th style="width: 60px;">ID</th>
                                     <th>邮箱</th>
+                                    <th style="width: 100px;">密码</th>
                                     <th style="width: 120px;">邮箱服务</th>
-                                    <th style="width: 100px;">状态</th>
-                                    <th style="width: 160px;">注册时间</th>
+                                    <th style="width: 80px;">状态</th>
+                                    <th style="width: 140px;">最后刷新</th>
                                     <th style="width: 140px;">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="accounts-table">
                                 <tr>
-                                    <td colspan="7">
+                                    <td colspan="8">
                                         <div class="empty-state">
                                             <div class="skeleton skeleton-text" style="width: 60%;"></div>
                                             <div class="skeleton skeleton-text" style="width: 80%;"></div>

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func
 
-from .models import Account, EmailService, RegistrationTask, Setting
+from .models import Account, EmailService, RegistrationTask, Setting, Proxy
 
 
 # ============================================================================
@@ -18,6 +18,9 @@ def create_account(
     db: Session,
     email: str,
     email_service: str,
+    password: Optional[str] = None,
+    client_id: Optional[str] = None,
+    session_token: Optional[str] = None,
     email_service_id: Optional[str] = None,
     account_id: Optional[str] = None,
     workspace_id: Optional[str] = None,
@@ -25,11 +28,15 @@ def create_account(
     refresh_token: Optional[str] = None,
     id_token: Optional[str] = None,
     proxy_used: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None
+    expires_at: Optional['datetime'] = None,
+    extra_data: Optional[Dict[str, Any]] = None
 ) -> Account:
     """创建新账户"""
     db_account = Account(
         email=email,
+        password=password,
+        client_id=client_id,
+        session_token=session_token,
         email_service=email_service,
         email_service_id=email_service_id,
         account_id=account_id,
@@ -38,7 +45,8 @@ def create_account(
         refresh_token=refresh_token,
         id_token=id_token,
         proxy_used=proxy_used,
-        metadata=metadata or {},
+        expires_at=expires_at,
+        extra_data=extra_data or {},
         registered_at=datetime.utcnow()
     )
     db.add(db_account)
@@ -370,3 +378,119 @@ def delete_setting(db: Session, key: str) -> bool:
     db.delete(db_setting)
     db.commit()
     return True
+
+
+# ============================================================================
+# 代理 CRUD
+# ============================================================================
+
+def create_proxy(
+    db: Session,
+    name: str,
+    type: str,
+    host: str,
+    port: int,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    enabled: bool = True,
+    priority: int = 0
+) -> Proxy:
+    """创建代理配置"""
+    db_proxy = Proxy(
+        name=name,
+        type=type,
+        host=host,
+        port=port,
+        username=username,
+        password=password,
+        enabled=enabled,
+        priority=priority
+    )
+    db.add(db_proxy)
+    db.commit()
+    db.refresh(db_proxy)
+    return db_proxy
+
+
+def get_proxy_by_id(db: Session, proxy_id: int) -> Optional[Proxy]:
+    """根据 ID 获取代理"""
+    return db.query(Proxy).filter(Proxy.id == proxy_id).first()
+
+
+def get_proxies(
+    db: Session,
+    enabled: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100
+) -> List[Proxy]:
+    """获取代理列表"""
+    query = db.query(Proxy)
+
+    if enabled is not None:
+        query = query.filter(Proxy.enabled == enabled)
+
+    query = query.order_by(desc(Proxy.created_at)).offset(skip).limit(limit)
+    return query.all()
+
+
+def get_enabled_proxies(db: Session) -> List[Proxy]:
+    """获取所有启用的代理"""
+    return db.query(Proxy).filter(Proxy.enabled == True).all()
+
+
+def update_proxy(
+    db: Session,
+    proxy_id: int,
+    **kwargs
+) -> Optional[Proxy]:
+    """更新代理配置"""
+    db_proxy = get_proxy_by_id(db, proxy_id)
+    if not db_proxy:
+        return None
+
+    for key, value in kwargs.items():
+        if hasattr(db_proxy, key):
+            setattr(db_proxy, key, value)
+
+    db.commit()
+    db.refresh(db_proxy)
+    return db_proxy
+
+
+def delete_proxy(db: Session, proxy_id: int) -> bool:
+    """删除代理配置"""
+    db_proxy = get_proxy_by_id(db, proxy_id)
+    if not db_proxy:
+        return False
+
+    db.delete(db_proxy)
+    db.commit()
+    return True
+
+
+def update_proxy_last_used(db: Session, proxy_id: int) -> bool:
+    """更新代理最后使用时间"""
+    db_proxy = get_proxy_by_id(db, proxy_id)
+    if not db_proxy:
+        return False
+
+    db_proxy.last_used = datetime.utcnow()
+    db.commit()
+    return True
+
+
+def get_random_proxy(db: Session) -> Optional[Proxy]:
+    """随机获取一个启用的代理"""
+    import random
+    proxies = get_enabled_proxies(db)
+    if not proxies:
+        return None
+    return random.choice(proxies)
+
+
+def get_proxies_count(db: Session, enabled: Optional[bool] = None) -> int:
+    """获取代理数量"""
+    query = db.query(func.count(Proxy.id))
+    if enabled is not None:
+        query = query.filter(Proxy.enabled == enabled)
+    return query.scalar()

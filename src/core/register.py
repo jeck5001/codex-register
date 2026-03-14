@@ -40,11 +40,13 @@ class RegistrationResult:
     """注册结果"""
     success: bool
     email: str = ""
+    password: str = ""  # 注册密码
     account_id: str = ""
     workspace_id: str = ""
     access_token: str = ""
     refresh_token: str = ""
     id_token: str = ""
+    session_token: str = ""  # 会话令牌
     error_message: str = ""
     logs: list = None
     metadata: dict = None
@@ -54,11 +56,13 @@ class RegistrationResult:
         return {
             "success": self.success,
             "email": self.email,
+            "password": self.password,
             "account_id": self.account_id,
             "workspace_id": self.workspace_id,
             "access_token": self.access_token[:20] + "..." if self.access_token else "",
             "refresh_token": self.refresh_token[:20] + "..." if self.refresh_token else "",
             "id_token": self.id_token[:20] + "..." if self.id_token else "",
+            "session_token": self.session_token[:20] + "..." if self.session_token else "",
             "error_message": self.error_message,
             "logs": self.logs or [],
             "metadata": self.metadata or {},
@@ -107,9 +111,11 @@ class RegistrationEngine:
 
         # 状态变量
         self.email: Optional[str] = None
+        self.password: Optional[str] = None  # 注册密码
         self.email_info: Optional[Dict[str, Any]] = None
         self.oauth_start: Optional[OAuthStart] = None
         self.session: Optional[cffi_requests.Session] = None
+        self.session_token: Optional[str] = None  # 会话令牌
         self.logs: list = []
 
     def _log(self, message: str, level: str = "info"):
@@ -268,6 +274,7 @@ class RegistrationEngine:
         try:
             # 生成密码
             password = self._generate_password()
+            self.password = password  # 保存密码到实例变量
             self._log(f"生成密码: {password}")
 
             # 提交密码注册
@@ -662,6 +669,14 @@ class RegistrationEngine:
             result.access_token = token_info.get("access_token", "")
             result.refresh_token = token_info.get("refresh_token", "")
             result.id_token = token_info.get("id_token", "")
+            result.password = self.password or ""  # 保存密码
+
+            # 尝试获取 session_token 从 cookie
+            session_cookie = self.session.cookies.get("__Secure-next-auth.session-token")
+            if session_cookie:
+                self.session_token = session_cookie
+                result.session_token = session_cookie
+                self._log(f"获取到 Session Token")
 
             # 17. 完成
             self._log("=" * 60)
@@ -699,11 +714,17 @@ class RegistrationEngine:
             return False
 
         try:
+            # 获取默认 client_id
+            settings = get_settings()
+
             with get_db() as db:
                 # 保存账户信息
                 account = crud.create_account(
                     db,
                     email=result.email,
+                    password=result.password,
+                    client_id=settings.openai_client_id,
+                    session_token=result.session_token,
                     email_service=self.email_service.service_type.value,
                     email_service_id=self.email_info.get("service_id") if self.email_info else None,
                     account_id=result.account_id,
@@ -712,7 +733,7 @@ class RegistrationEngine:
                     refresh_token=result.refresh_token,
                     id_token=result.id_token,
                     proxy_used=self.proxy_url,
-                    metadata=result.metadata
+                    extra_data=result.metadata
                 )
 
                 self._log(f"账户已保存到数据库，ID: {account.id}")

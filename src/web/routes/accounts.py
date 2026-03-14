@@ -26,10 +26,14 @@ class AccountResponse(BaseModel):
     """账号响应模型"""
     id: int
     email: str
+    password: Optional[str] = None
+    client_id: Optional[str] = None
     email_service: str
     account_id: Optional[str] = None
     workspace_id: Optional[str] = None
     registered_at: Optional[str] = None
+    last_refresh: Optional[str] = None
+    expires_at: Optional[str] = None
     status: str
     proxy_used: Optional[str] = None
     created_at: Optional[str] = None
@@ -69,10 +73,14 @@ def account_to_response(account: Account) -> AccountResponse:
     return AccountResponse(
         id=account.id,
         email=account.email,
+        password=account.password,
+        client_id=account.client_id,
         email_service=account.email_service,
         account_id=account.account_id,
         workspace_id=account.workspace_id,
         registered_at=account.registered_at.isoformat() if account.registered_at else None,
+        last_refresh=account.last_refresh.isoformat() if account.last_refresh else None,
+        expires_at=account.expires_at.isoformat() if account.expires_at else None,
         status=account.status,
         proxy_used=account.proxy_used,
         created_at=account.created_at.isoformat() if account.created_at else None,
@@ -260,13 +268,18 @@ async def export_accounts_json(
         for acc in accounts:
             export_data.append({
                 "email": acc.email,
+                "password": acc.password,
+                "client_id": acc.client_id,
                 "account_id": acc.account_id,
                 "workspace_id": acc.workspace_id,
                 "access_token": acc.access_token,
                 "refresh_token": acc.refresh_token,
                 "id_token": acc.id_token,
+                "session_token": acc.session_token,
                 "email_service": acc.email_service,
                 "registered_at": acc.registered_at.isoformat() if acc.registered_at else None,
+                "last_refresh": acc.last_refresh.isoformat() if acc.last_refresh else None,
+                "expires_at": acc.expires_at.isoformat() if acc.expires_at else None,
                 "status": acc.status,
             })
 
@@ -310,9 +323,10 @@ async def export_accounts_csv(
 
         # 写入表头
         writer.writerow([
-            "ID", "Email", "Account ID", "Workspace ID",
-            "Access Token", "Refresh Token", "ID Token",
-            "Email Service", "Status", "Registered At"
+            "ID", "Email", "Password", "Client ID",
+            "Account ID", "Workspace ID",
+            "Access Token", "Refresh Token", "ID Token", "Session Token",
+            "Email Service", "Status", "Registered At", "Last Refresh", "Expires At"
         ])
 
         # 写入数据
@@ -320,14 +334,19 @@ async def export_accounts_csv(
             writer.writerow([
                 acc.id,
                 acc.email,
+                acc.password or "",
+                acc.client_id or "",
                 acc.account_id or "",
                 acc.workspace_id or "",
                 acc.access_token or "",
                 acc.refresh_token or "",
                 acc.id_token or "",
+                acc.session_token or "",
                 acc.email_service,
                 acc.status,
-                acc.registered_at.isoformat() if acc.registered_at else ""
+                acc.registered_at.isoformat() if acc.registered_at else "",
+                acc.last_refresh.isoformat() if acc.last_refresh else "",
+                acc.expires_at.isoformat() if acc.expires_at else ""
             ])
 
         # 生成文件名
@@ -367,3 +386,123 @@ async def get_accounts_stats():
             "by_status": {status: count for status, count in status_stats},
             "by_email_service": {service: count for service, count in service_stats}
         }
+
+
+# ============== Token 刷新相关 ==============
+
+class TokenRefreshRequest(BaseModel):
+    """Token 刷新请求"""
+    proxy: Optional[str] = None
+
+
+class BatchRefreshRequest(BaseModel):
+    """批量刷新请求"""
+    ids: List[int]
+    proxy: Optional[str] = None
+
+
+class TokenValidateRequest(BaseModel):
+    """Token 验证请求"""
+    proxy: Optional[str] = None
+
+
+class BatchValidateRequest(BaseModel):
+    """批量验证请求"""
+    ids: List[int]
+    proxy: Optional[str] = None
+
+
+@router.post("/{account_id}/refresh")
+async def refresh_account_token(account_id: int, request: TokenRefreshRequest = None):
+    """刷新单个账号的 Token"""
+    from ...core.token_refresh import refresh_account_token as do_refresh
+
+    proxy = request.proxy if request else None
+    result = do_refresh(account_id, proxy)
+
+    if result.success:
+        return {
+            "success": True,
+            "message": "Token 刷新成功",
+            "expires_at": result.expires_at.isoformat() if result.expires_at else None
+        }
+    else:
+        return {
+            "success": False,
+            "error": result.error_message
+        }
+
+
+@router.post("/batch-refresh")
+async def batch_refresh_tokens(request: BatchRefreshRequest, background_tasks: BackgroundTasks):
+    """批量刷新账号 Token"""
+    from ...core.token_refresh import refresh_account_token as do_refresh
+
+    results = {
+        "success_count": 0,
+        "failed_count": 0,
+        "errors": []
+    }
+
+    for account_id in request.ids:
+        try:
+            result = do_refresh(account_id, request.proxy)
+            if result.success:
+                results["success_count"] += 1
+            else:
+                results["failed_count"] += 1
+                results["errors"].append({"id": account_id, "error": result.error_message})
+        except Exception as e:
+            results["failed_count"] += 1
+            results["errors"].append({"id": account_id, "error": str(e)})
+
+    return results
+
+
+@router.post("/{account_id}/validate")
+async def validate_account_token(account_id: int, request: TokenValidateRequest = None):
+    """验证单个账号的 Token 有效性"""
+    from ...core.token_refresh import validate_account_token as do_validate
+
+    proxy = request.proxy if request else None
+    is_valid, error = do_validate(account_id, proxy)
+
+    return {
+        "id": account_id,
+        "valid": is_valid,
+        "error": error
+    }
+
+
+@router.post("/batch-validate")
+async def batch_validate_tokens(request: BatchValidateRequest):
+    """批量验证账号 Token 有效性"""
+    from ...core.token_refresh import validate_account_token as do_validate
+
+    results = {
+        "valid_count": 0,
+        "invalid_count": 0,
+        "details": []
+    }
+
+    for account_id in request.ids:
+        try:
+            is_valid, error = do_validate(account_id, request.proxy)
+            results["details"].append({
+                "id": account_id,
+                "valid": is_valid,
+                "error": error
+            })
+            if is_valid:
+                results["valid_count"] += 1
+            else:
+                results["invalid_count"] += 1
+        except Exception as e:
+            results["invalid_count"] += 1
+            results["details"].append({
+                "id": account_id,
+                "valid": False,
+                "error": str(e)
+            })
+
+    return results

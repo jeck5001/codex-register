@@ -78,6 +78,11 @@ def create_app() -> FastAPI:
         """账号管理页面"""
         return templates.TemplateResponse("accounts.html", {"request": request})
 
+    @app.get("/email-services", response_class=HTMLResponse)
+    async def email_services_page(request: Request):
+        """邮箱服务管理页面"""
+        return templates.TemplateResponse("email_services.html", {"request": request})
+
     @app.get("/settings", response_class=HTMLResponse)
     async def settings_page(request: Request):
         """设置页面"""

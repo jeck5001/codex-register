@@ -135,6 +135,66 @@ async def update_proxy_settings(request: ProxySettings):
     return {"success": True, "message": "代理设置已更新"}
 
 
+@router.post("/proxy/test")
+async def test_proxy_settings(request: ProxySettings):
+    """测试代理连接"""
+    import time
+    from curl_cffi import requests as cffi_requests
+
+    # 构建代理 URL
+    if request.type == "http":
+        scheme = "http"
+    elif request.type == "socks5":
+        scheme = "socks5"
+    else:
+        raise HTTPException(status_code=400, detail="不支持的代理类型")
+
+    auth = ""
+    if request.username and request.password:
+        auth = f"{request.username}:{request.password}@"
+
+    proxy_url = f"{scheme}://{auth}{request.host}:{request.port}"
+
+    # 测试连接
+    test_url = "https://api.ipify.org?format=json"
+    start_time = time.time()
+
+    try:
+        proxies = {
+            "http": proxy_url,
+            "https": proxy_url
+        }
+
+        response = cffi_requests.get(
+            test_url,
+            proxies=proxies,
+            timeout=3,
+            impersonate="chrome110"
+        )
+
+        elapsed_time = time.time() - start_time
+
+        if response.status_code == 200:
+            ip_info = response.json()
+            return {
+                "success": True,
+                "ip": ip_info.get("ip", ""),
+                "response_time": round(elapsed_time * 1000),  # 毫秒
+                "message": f"代理连接成功，出口 IP: {ip_info.get('ip', 'unknown')}"
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"代理返回错误状态码: {response.status_code}"
+            }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"代理连接失败: {str(e)}"
+        }
+
+
 @router.get("/registration")
 async def get_registration_settings():
     """获取注册设置"""
@@ -292,3 +352,275 @@ async def get_recent_logs(
         }
     except Exception as e:
         return {"logs": [], "error": str(e)}
+
+
+# ============== 临时邮箱设置 ==============
+
+class TempmailSettings(BaseModel):
+    """临时邮箱设置"""
+    api_url: Optional[str] = None
+    enabled: bool = True
+
+
+@router.get("/tempmail")
+async def get_tempmail_settings():
+    """获取临时邮箱设置"""
+    settings = get_settings()
+
+    return {
+        "api_url": settings.tempmail_base_url,
+        "timeout": settings.tempmail_timeout,
+        "max_retries": settings.tempmail_max_retries,
+        "enabled": True  # 临时邮箱默认可用
+    }
+
+
+@router.post("/tempmail")
+async def update_tempmail_settings(request: TempmailSettings):
+    """更新临时邮箱设置"""
+    update_dict = {}
+
+    if request.api_url:
+        update_dict["tempmail_base_url"] = request.api_url
+
+    update_settings(**update_dict)
+
+    return {"success": True, "message": "临时邮箱设置已更新"}
+
+
+# ============== 代理列表 CRUD ==============
+
+class ProxyCreateRequest(BaseModel):
+    """创建代理请求"""
+    name: str
+    type: str = "http"  # http, socks5
+    host: str
+    port: int
+    username: Optional[str] = None
+    password: Optional[str] = None
+    enabled: bool = True
+    priority: int = 0
+
+
+class ProxyUpdateRequest(BaseModel):
+    """更新代理请求"""
+    name: Optional[str] = None
+    type: Optional[str] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
+
+
+@router.get("/proxies")
+async def get_proxies_list(enabled: Optional[bool] = None):
+    """获取代理列表"""
+    with get_db() as db:
+        proxies = crud.get_proxies(db, enabled=enabled)
+        return {
+            "proxies": [p.to_dict() for p in proxies],
+            "total": len(proxies)
+        }
+
+
+@router.post("/proxies")
+async def create_proxy_item(request: ProxyCreateRequest):
+    """创建代理"""
+    with get_db() as db:
+        proxy = crud.create_proxy(
+            db,
+            name=request.name,
+            type=request.type,
+            host=request.host,
+            port=request.port,
+            username=request.username,
+            password=request.password,
+            enabled=request.enabled,
+            priority=request.priority
+        )
+        return {"success": True, "proxy": proxy.to_dict()}
+
+
+@router.get("/proxies/{proxy_id}")
+async def get_proxy_item(proxy_id: int):
+    """获取单个代理"""
+    with get_db() as db:
+        proxy = crud.get_proxy_by_id(db, proxy_id)
+        if not proxy:
+            raise HTTPException(status_code=404, detail="代理不存在")
+        return proxy.to_dict(include_password=True)
+
+
+@router.patch("/proxies/{proxy_id}")
+async def update_proxy_item(proxy_id: int, request: ProxyUpdateRequest):
+    """更新代理"""
+    with get_db() as db:
+        update_data = {}
+        if request.name is not None:
+            update_data["name"] = request.name
+        if request.type is not None:
+            update_data["type"] = request.type
+        if request.host is not None:
+            update_data["host"] = request.host
+        if request.port is not None:
+            update_data["port"] = request.port
+        if request.username is not None:
+            update_data["username"] = request.username
+        if request.password is not None:
+            update_data["password"] = request.password
+        if request.enabled is not None:
+            update_data["enabled"] = request.enabled
+        if request.priority is not None:
+            update_data["priority"] = request.priority
+
+        proxy = crud.update_proxy(db, proxy_id, **update_data)
+        if not proxy:
+            raise HTTPException(status_code=404, detail="代理不存在")
+        return {"success": True, "proxy": proxy.to_dict()}
+
+
+@router.delete("/proxies/{proxy_id}")
+async def delete_proxy_item(proxy_id: int):
+    """删除代理"""
+    with get_db() as db:
+        success = crud.delete_proxy(db, proxy_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="代理不存在")
+        return {"success": True, "message": "代理已删除"}
+
+
+@router.post("/proxies/{proxy_id}/test")
+async def test_proxy_item(proxy_id: int):
+    """测试单个代理"""
+    import time
+    from curl_cffi import requests as cffi_requests
+
+    with get_db() as db:
+        proxy = crud.get_proxy_by_id(db, proxy_id)
+        if not proxy:
+            raise HTTPException(status_code=404, detail="代理不存在")
+
+        proxy_url = proxy.proxy_url
+        test_url = "https://api.ipify.org?format=json"
+        start_time = time.time()
+
+        try:
+            proxies = {
+                "http": proxy_url,
+                "https": proxy_url
+            }
+
+            response = cffi_requests.get(
+                test_url,
+                proxies=proxies,
+                timeout=3,
+                impersonate="chrome110"
+            )
+
+            elapsed_time = time.time() - start_time
+
+            if response.status_code == 200:
+                ip_info = response.json()
+                return {
+                    "success": True,
+                    "ip": ip_info.get("ip", ""),
+                    "response_time": round(elapsed_time * 1000),
+                    "message": f"代理连接成功，出口 IP: {ip_info.get('ip', 'unknown')}"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"代理返回错误状态码: {response.status_code}"
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"代理连接失败: {str(e)}"
+            }
+
+
+@router.post("/proxies/test-all")
+async def test_all_proxies():
+    """测试所有启用的代理"""
+    import time
+    from curl_cffi import requests as cffi_requests
+
+    with get_db() as db:
+        proxies = crud.get_enabled_proxies(db)
+
+        results = []
+        for proxy in proxies:
+            proxy_url = proxy.proxy_url
+            test_url = "https://api.ipify.org?format=json"
+            start_time = time.time()
+
+            try:
+                proxies_dict = {
+                    "http": proxy_url,
+                    "https": proxy_url
+                }
+
+                response = cffi_requests.get(
+                    test_url,
+                    proxies=proxies_dict,
+                    timeout=3,
+                    impersonate="chrome110"
+                )
+
+                elapsed_time = time.time() - start_time
+
+                if response.status_code == 200:
+                    ip_info = response.json()
+                    results.append({
+                        "id": proxy.id,
+                        "name": proxy.name,
+                        "success": True,
+                        "ip": ip_info.get("ip", ""),
+                        "response_time": round(elapsed_time * 1000)
+                    })
+                else:
+                    results.append({
+                        "id": proxy.id,
+                        "name": proxy.name,
+                        "success": False,
+                        "message": f"状态码: {response.status_code}"
+                    })
+
+            except Exception as e:
+                results.append({
+                    "id": proxy.id,
+                    "name": proxy.name,
+                    "success": False,
+                    "message": str(e)
+                })
+
+        success_count = sum(1 for r in results if r["success"])
+        return {
+            "total": len(proxies),
+            "success": success_count,
+            "failed": len(proxies) - success_count,
+            "results": results
+        }
+
+
+@router.post("/proxies/{proxy_id}/enable")
+async def enable_proxy(proxy_id: int):
+    """启用代理"""
+    with get_db() as db:
+        proxy = crud.update_proxy(db, proxy_id, enabled=True)
+        if not proxy:
+            raise HTTPException(status_code=404, detail="代理不存在")
+        return {"success": True, "message": "代理已启用"}
+
+
+@router.post("/proxies/{proxy_id}/disable")
+async def disable_proxy(proxy_id: int):
+    """禁用代理"""
+    with get_db() as db:
+        proxy = crud.update_proxy(db, proxy_id, enabled=False)
+        if not proxy:
+            raise HTTPException(status_code=404, detail="代理不存在")
+        return {"success": True, "message": "代理已禁用"}
