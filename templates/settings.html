@@ -99,6 +99,48 @@
                     </div>
                 </div>
 
+                <!-- 动态代理配置 -->
+                <div class="card" style="margin-top: var(--spacing-lg);">
+                    <div class="card-header">
+                        <h3>动态代理配置</h3>
+                        <span class="hint">通过 API 每次获取新代理 IP，优先级高于静态代理和代理列表</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="dynamic-proxy-form">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="dynamic-proxy-enabled" name="enabled">
+                                    启用动态代理
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="dynamic-proxy-api-url">代理 API 地址</label>
+                                <input type="text" id="dynamic-proxy-api-url" name="api_url" placeholder="http://api.example.com/get_proxy">
+                                <small style="color: var(--text-muted);">每次注册任务启动时调用此 API 获取代理 URL</small>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="dynamic-proxy-api-key">API 密钥 (可选)</label>
+                                    <input type="password" id="dynamic-proxy-api-key" name="api_key" placeholder="留空保持不变" autocomplete="new-password">
+                                </div>
+                                <div class="form-group">
+                                    <label for="dynamic-proxy-api-key-header">密钥请求头</label>
+                                    <input type="text" id="dynamic-proxy-api-key-header" name="api_key_header" value="X-API-Key">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="dynamic-proxy-result-field">JSON 字段路径 (可选)</label>
+                                <input type="text" id="dynamic-proxy-result-field" name="result_field" placeholder="例如: data.proxy 或留空使用响应原文">
+                                <small style="color: var(--text-muted);">若 API 返回 JSON，填写点号分隔的字段路径提取代理 URL；留空则将响应原文作为代理 URL</small>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">💾 保存设置</button>
+                                <button type="button" class="btn btn-secondary" id="test-dynamic-proxy-btn">🔌 测试动态代理</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
                 <!-- 代理列表 -->
                 <div class="card" style="margin-top: var(--spacing-lg);">
                     <div class="card-header">

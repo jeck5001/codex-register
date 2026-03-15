@@ -37,7 +37,8 @@ def get_proxy_for_registration(db) -> Tuple[Optional[str], Optional[int]]:
 
     策略：
     1. 优先从代理列表中随机选择一个启用的代理
-    2. 如果代理列表为空，使用系统设置中的默认代理
+    2. 如果代理列表为空且启用了动态代理，调用动态代理 API 获取
+    3. 否则使用系统设置中的静态默认代理
 
     Returns:
         Tuple[proxy_url, proxy_id]: 代理 URL 和代理 ID（如果来自代理列表）
@@ -47,10 +48,11 @@ def get_proxy_for_registration(db) -> Tuple[Optional[str], Optional[int]]:
     if proxy:
         return proxy.proxy_url, proxy.id
 
-    # 代理列表为空，使用系统设置中的默认代理
-    settings = get_settings()
-    if settings.proxy_enabled and settings.proxy_url:
-        return settings.proxy_url, None
+    # 代理列表为空，尝试动态代理或静态代理
+    from ...core.dynamic_proxy import get_proxy_url_for_task
+    proxy_url = get_proxy_url_for_task()
+    if proxy_url:
+        return proxy_url, None
 
     return None, None
 

@@ -79,6 +79,11 @@ async def get_all_settings():
             "port": settings.proxy_port,
             "username": settings.proxy_username,
             "has_password": bool(settings.proxy_password),
+            "dynamic_enabled": settings.proxy_dynamic_enabled,
+            "dynamic_api_url": settings.proxy_dynamic_api_url,
+            "dynamic_api_key_header": settings.proxy_dynamic_api_key_header,
+            "dynamic_result_field": settings.proxy_dynamic_result_field,
+            "has_dynamic_api_key": bool(settings.proxy_dynamic_api_key and settings.proxy_dynamic_api_key.get_secret_value()),
         },
         "registration": {
             "max_retries": settings.registration_max_retries,
@@ -197,6 +202,91 @@ async def test_proxy_settings(request: ProxySettings):
             "success": False,
             "message": f"代理连接失败: {str(e)}"
         }
+
+
+@router.get("/proxy/dynamic")
+async def get_dynamic_proxy_settings():
+    """获取动态代理设置"""
+    settings = get_settings()
+    return {
+        "enabled": settings.proxy_dynamic_enabled,
+        "api_url": settings.proxy_dynamic_api_url,
+        "api_key_header": settings.proxy_dynamic_api_key_header,
+        "result_field": settings.proxy_dynamic_result_field,
+        "has_api_key": bool(settings.proxy_dynamic_api_key and settings.proxy_dynamic_api_key.get_secret_value()),
+    }
+
+
+class DynamicProxySettings(BaseModel):
+    """动态代理设置"""
+    enabled: bool = False
+    api_url: str = ""
+    api_key: Optional[str] = None
+    api_key_header: str = "X-API-Key"
+    result_field: str = ""
+
+
+@router.post("/proxy/dynamic")
+async def update_dynamic_proxy_settings(request: DynamicProxySettings):
+    """更新动态代理设置"""
+    update_dict = {
+        "proxy_dynamic_enabled": request.enabled,
+        "proxy_dynamic_api_url": request.api_url,
+        "proxy_dynamic_api_key_header": request.api_key_header,
+        "proxy_dynamic_result_field": request.result_field,
+    }
+    if request.api_key is not None:
+        update_dict["proxy_dynamic_api_key"] = request.api_key
+
+    update_settings(**update_dict)
+    return {"success": True, "message": "动态代理设置已更新"}
+
+
+@router.post("/proxy/dynamic/test")
+async def test_dynamic_proxy(request: DynamicProxySettings):
+    """测试动态代理 API"""
+    from ...core.dynamic_proxy import fetch_dynamic_proxy
+
+    if not request.api_url:
+        raise HTTPException(status_code=400, detail="请填写动态代理 API 地址")
+
+    # 若未传入 api_key，使用已保存的
+    api_key = request.api_key or ""
+    if not api_key:
+        settings = get_settings()
+        if settings.proxy_dynamic_api_key:
+            api_key = settings.proxy_dynamic_api_key.get_secret_value()
+
+    proxy_url = fetch_dynamic_proxy(
+        api_url=request.api_url,
+        api_key=api_key,
+        api_key_header=request.api_key_header,
+        result_field=request.result_field,
+    )
+
+    if not proxy_url:
+        return {"success": False, "message": "动态代理 API 返回为空或请求失败"}
+
+    # 用获取到的代理测试连通性
+    import time
+    from curl_cffi import requests as cffi_requests
+    try:
+        proxies = {"http": proxy_url, "https": proxy_url}
+        start = time.time()
+        resp = cffi_requests.get(
+            "https://api.ipify.org?format=json",
+            proxies=proxies,
+            timeout=10,
+            impersonate="chrome110"
+        )
+        elapsed = round((time.time() - start) * 1000)
+        if resp.status_code == 200:
+            ip = resp.json().get("ip", "")
+            return {"success": True, "proxy_url": proxy_url, "ip": ip, "response_time": elapsed,
+                    "message": f"动态代理可用，出口 IP: {ip}，响应时间: {elapsed}ms"}
+        return {"success": False, "proxy_url": proxy_url, "message": f"代理连接失败: HTTP {resp.status_code}"}
+    except Exception as e:
+        return {"success": False, "proxy_url": proxy_url, "message": f"代理连接失败: {e}"}
 
 
 @router.get("/registration")

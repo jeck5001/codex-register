@@ -178,6 +178,37 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         description="代理密码",
         is_secret=True
     ),
+    "proxy_dynamic_enabled": SettingDefinition(
+        db_key="proxy.dynamic_enabled",
+        default_value=False,
+        category=SettingCategory.PROXY,
+        description="是否启用动态代理"
+    ),
+    "proxy_dynamic_api_url": SettingDefinition(
+        db_key="proxy.dynamic_api_url",
+        default_value="",
+        category=SettingCategory.PROXY,
+        description="动态代理 API 地址，返回代理 URL 字符串"
+    ),
+    "proxy_dynamic_api_key": SettingDefinition(
+        db_key="proxy.dynamic_api_key",
+        default_value="",
+        category=SettingCategory.PROXY,
+        description="动态代理 API 密钥（可选）",
+        is_secret=True
+    ),
+    "proxy_dynamic_api_key_header": SettingDefinition(
+        db_key="proxy.dynamic_api_key_header",
+        default_value="X-API-Key",
+        category=SettingCategory.PROXY,
+        description="动态代理 API 密钥请求头名称"
+    ),
+    "proxy_dynamic_result_field": SettingDefinition(
+        db_key="proxy.dynamic_result_field",
+        default_value="",
+        category=SettingCategory.PROXY,
+        description="从 JSON 响应中提取代理 URL 的字段路径（留空则使用响应原文）"
+    ),
 
     # 注册配置
     "registration_max_retries": SettingDefinition(
@@ -335,6 +366,7 @@ SETTING_TYPES: Dict[str, Type] = {
     "log_retention_days": int,
     "proxy_enabled": bool,
     "proxy_port": int,
+    "proxy_dynamic_enabled": bool,
     "registration_max_retries": int,
     "registration_timeout": int,
     "registration_default_password_length": int,
@@ -534,6 +566,11 @@ class Settings(BaseModel):
     proxy_port: int = 7890
     proxy_username: Optional[str] = None
     proxy_password: Optional[SecretStr] = None
+    proxy_dynamic_enabled: bool = False
+    proxy_dynamic_api_url: str = ""
+    proxy_dynamic_api_key: Optional[SecretStr] = None
+    proxy_dynamic_api_key_header: str = "X-API-Key"
+    proxy_dynamic_result_field: str = ""
 
     @property
     def proxy_url(self) -> Optional[str]:
