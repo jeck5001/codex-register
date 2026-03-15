@@ -458,63 +458,58 @@ async function handleBatchRegistration(requestData) {
 
 // 取消任务
 async function handleCancelTask() {
-    if (isBatchMode && currentBatch) {
-        // 优先通过 WebSocket 取消批量任务
-        if (batchWebSocket && batchWebSocket.readyState === WebSocket.OPEN) {
-            cancelBatchViaWebSocket();
-            addLog('warning', '[警告] 批量任务取消请求已提交');
-            toast.info('任务取消请求已提交');
-        } else {
-            // 降级到 REST API
-            try {
-                await api.post(`/registration/batch/${currentBatch.batch_id}/cancel`);
+    // 禁用取消按钮，防止重复点击
+    elements.cancelBtn.disabled = true;
+    addLog('info', '[系统] 正在提交取消请求...');
+
+    try {
+        // 批量任务取消（包括普通批量模式和 Outlook 批量模式）
+        if (currentBatch && (isBatchMode || isOutlookBatchMode)) {
+            // 优先通过 WebSocket 取消
+            if (batchWebSocket && batchWebSocket.readyState === WebSocket.OPEN) {
+                batchWebSocket.send(JSON.stringify({ type: 'cancel' }));
+                addLog('warning', '[警告] 批量任务取消请求已提交');
+                toast.info('任务取消请求已提交');
+            } else {
+                // 降级到 REST API
+                const endpoint = isOutlookBatchMode
+                    ? `/registration/outlook-batch/${currentBatch.batch_id}/cancel`
+                    : `/registration/batch/${currentBatch.batch_id}/cancel`;
+
+                await api.post(endpoint);
                 addLog('warning', '[警告] 批量任务取消请求已提交');
                 toast.info('任务取消请求已提交');
                 stopBatchPolling();
                 resetButtons();
-            } catch (error) {
-                addLog('error', `[错误] 取消失败: ${error.message}`);
-                toast.error(error.message);
             }
         }
-    } else if (isOutlookBatchMode && currentBatch) {
-        // Outlook 批量任务取消
-        if (batchWebSocket && batchWebSocket.readyState === WebSocket.OPEN) {
-            cancelBatchViaWebSocket();
-            addLog('warning', '[警告] Outlook 批量任务取消请求已提交');
-            toast.info('任务取消请求已提交');
-        } else {
-            // 降级到 REST API
-            try {
-                await api.post(`/registration/outlook-batch/${currentBatch.batch_id}/cancel`);
-                addLog('warning', '[警告] Outlook 批量任务取消请求已提交');
+        // 单次任务取消
+        else if (currentTask) {
+            // 优先通过 WebSocket 取消
+            if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                webSocket.send(JSON.stringify({ type: 'cancel' }));
+                addLog('warning', '[警告] 任务取消请求已提交');
                 toast.info('任务取消请求已提交');
-                stopBatchPolling();
-                resetButtons();
-            } catch (error) {
-                addLog('error', `[错误] 取消失败: ${error.message}`);
-                toast.error(error.message);
-            }
-        }
-    } else if (currentTask) {
-        // 优先通过 WebSocket 取消
-        if (useWebSocket && webSocket && webSocket.readyState === WebSocket.OPEN) {
-            cancelViaWebSocket();
-            addLog('warning', '[警告] 任务取消请求已提交');
-            toast.info('任务取消请求已提交');
-        } else {
-            // 降级到 REST API
-            try {
+            } else {
+                // 降级到 REST API
                 await api.post(`/registration/tasks/${currentTask.task_uuid}/cancel`);
                 addLog('warning', '[警告] 任务已取消');
                 toast.info('任务已取消');
                 stopLogPolling();
                 resetButtons();
-            } catch (error) {
-                addLog('error', `[错误] 取消失败: ${error.message}`);
-                toast.error(error.message);
             }
         }
+        // 没有活动任务
+        else {
+            addLog('warning', '[警告] 没有活动的任务可以取消');
+            toast.warning('没有活动的任务');
+            resetButtons();
+        }
+    } catch (error) {
+        addLog('error', `[错误] 取消失败: ${error.message}`);
+        toast.error(error.message);
+        // 恢复取消按钮，允许重试
+        elements.cancelBtn.disabled = false;
     }
 }
 
