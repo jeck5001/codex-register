@@ -78,6 +78,7 @@ def start_webui():
         "reload": settings.debug,
         "log_level": "info" if settings.debug else "warning",
         "access_log": settings.debug,
+        "ws": "websockets",
     }
 
     logger = logging.getLogger(__name__)

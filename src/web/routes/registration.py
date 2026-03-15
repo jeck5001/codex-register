@@ -420,6 +420,9 @@ async def run_batch_registration(
 
     使用线程池执行每个注册任务，避免阻塞主事件循环
     """
+    # 初始化 TaskManager 批量任务（支持 WebSocket 推送）
+    task_manager.init_batch(batch_id, len(task_uuids))
+
     batch_tasks[batch_id] = {
         "total": len(task_uuids),
         "completed": 0,
@@ -430,18 +433,31 @@ async def run_batch_registration(
         "current_index": 0
     }
 
+    def add_batch_log(msg: str):
+        batch_tasks[batch_id]["logs"] = batch_tasks[batch_id].get("logs", [])
+        batch_tasks[batch_id]["logs"].append(msg)
+        task_manager.add_batch_log(batch_id, msg)
+
+    def update_batch_status(**kwargs):
+        for key, value in kwargs.items():
+            if key in batch_tasks[batch_id]:
+                batch_tasks[batch_id][key] = value
+        task_manager.update_batch_status(batch_id, **kwargs)
+
     try:
         for i, task_uuid in enumerate(task_uuids):
             # 检查是否已取消
-            if batch_tasks[batch_id]["cancelled"]:
+            if task_manager.is_batch_cancelled(batch_id) or batch_tasks[batch_id]["cancelled"]:
                 # 取消剩余任务
                 with get_db() as db:
                     for remaining_uuid in task_uuids[i:]:
                         crud.update_registration_task(db, remaining_uuid, status="cancelled")
+                add_batch_log(f"[取消] 批量任务已取消")
+                update_batch_status(finished=True, status="cancelled")
                 logger.info(f"批量任务 {batch_id} 已取消")
                 break
 
-            batch_tasks[batch_id]["current_index"] = i
+            update_batch_status(current_index=i)
 
             # 运行单个注册任务（使用线程池）
             await run_registration_task(
@@ -452,22 +468,38 @@ async def run_batch_registration(
             with get_db() as db:
                 task = crud.get_registration_task(db, task_uuid)
                 if task:
-                    batch_tasks[batch_id]["completed"] += 1
+                    new_completed = batch_tasks[batch_id]["completed"] + 1
+                    new_success = batch_tasks[batch_id]["success"]
+                    new_failed = batch_tasks[batch_id]["failed"]
+
                     if task.status == "completed":
-                        batch_tasks[batch_id]["success"] += 1
+                        new_success += 1
+                        add_batch_log(f"[成功] 第 {new_success} 个账号注册成功")
                     elif task.status == "failed":
-                        batch_tasks[batch_id]["failed"] += 1
+                        new_failed += 1
+                        add_batch_log(f"[失败] 第 {new_failed} 个账号注册失败: {task.error_message}")
+
+                    update_batch_status(
+                        completed=new_completed,
+                        success=new_success,
+                        failed=new_failed
+                    )
 
             # 如果不是最后一个任务，等待随机间隔
-            if i < len(task_uuids) - 1 and not batch_tasks[batch_id]["cancelled"]:
+            if i < len(task_uuids) - 1 and not task_manager.is_batch_cancelled(batch_id):
                 wait_time = random.randint(interval_min, interval_max)
                 logger.info(f"批量任务 {batch_id}: 等待 {wait_time} 秒后继续下一个任务")
                 await asyncio.sleep(wait_time)
 
-        logger.info(f"批量任务 {batch_id} 完成: 成功 {batch_tasks[batch_id]['success']}, 失败 {batch_tasks[batch_id]['failed']}")
+        if not task_manager.is_batch_cancelled(batch_id):
+            add_batch_log(f"[完成] 批量任务完成！成功: {batch_tasks[batch_id]['success']}, 失败: {batch_tasks[batch_id]['failed']}")
+            update_batch_status(finished=True, status="completed")
+            logger.info(f"批量任务 {batch_id} 完成: 成功 {batch_tasks[batch_id]['success']}, 失败 {batch_tasks[batch_id]['failed']}")
 
     except Exception as e:
         logger.error(f"批量任务 {batch_id} 异常: {e}")
+        add_batch_log(f"[错误] 批量任务异常: {str(e)}")
+        update_batch_status(finished=True, status="failed")
     finally:
         batch_tasks[batch_id]["finished"] = True
 
@@ -616,6 +648,7 @@ async def cancel_batch(batch_id: str):
         raise HTTPException(status_code=400, detail="批量任务已完成")
 
     batch["cancelled"] = True
+    task_manager.cancel_batch(batch_id)
     return {"success": True, "message": "批量任务取消请求已提交"}
 
 
