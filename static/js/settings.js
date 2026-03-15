@@ -42,7 +42,9 @@ const elements = {
     cpaForm: document.getElementById('cpa-form'),
     testCpaBtn: document.getElementById('test-cpa-btn'),
     // 验证码设置
-    emailCodeForm: document.getElementById('email-code-form')
+    emailCodeForm: document.getElementById('email-code-form'),
+    // Outlook 设置
+    outlookSettingsForm: document.getElementById('outlook-settings-form')
 };
 
 // 选中的服务 ID
@@ -213,6 +215,11 @@ function initEventListeners() {
     if (elements.emailCodeForm) {
         elements.emailCodeForm.addEventListener('submit', handleSaveEmailCode);
     }
+
+    // Outlook 设置
+    if (elements.outlookSettingsForm) {
+        elements.outlookSettingsForm.addEventListener('submit', handleSaveOutlookSettings);
+    }
 }
 
 // 加载设置
@@ -242,6 +249,8 @@ async function loadSettings() {
 
         // 加载 CPA 设置
         loadCpaSettings();
+        // 加载 Outlook 设置
+        loadOutlookSettings();
 
     } catch (error) {
         console.error('加载设置失败:', error);
@@ -917,6 +926,35 @@ async function handleSaveCpa(e) {
         await api.post('/settings/cpa', data);
         toast.success('CPA 设置已保存');
         loadCpaSettings();
+    } catch (error) {
+        toast.error('保存失败: ' + error.message);
+    }
+}
+
+// ============================================================================
+// Outlook 设置管理
+// ============================================================================
+
+// 加载 Outlook 设置
+async function loadOutlookSettings() {
+    try {
+        const data = await api.get('/settings/outlook');
+        const el = document.getElementById('outlook-default-client-id');
+        if (el) el.value = data.default_client_id || '';
+    } catch (error) {
+        console.error('加载 Outlook 设置失败:', error);
+    }
+}
+
+// 保存 Outlook 设置
+async function handleSaveOutlookSettings(e) {
+    e.preventDefault();
+    const data = {
+        default_client_id: document.getElementById('outlook-default-client-id').value
+    };
+    try {
+        await api.post('/settings/outlook', data);
+        toast.success('Outlook 设置已保存');
     } catch (error) {
         toast.error('保存失败: ' + error.message);
     }

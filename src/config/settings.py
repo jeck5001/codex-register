@@ -4,7 +4,7 @@
 """
 
 import os
-from typing import Optional, Dict, Any, Type
+from typing import Optional, Dict, Any, Type, List
 from enum import Enum
 from pydantic import BaseModel, field_validator
 from pydantic.types import SecretStr
@@ -297,6 +297,32 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         category=SettingCategory.EMAIL,
         description="验证码轮询间隔（秒）"
     ),
+
+    # Outlook 配置
+    "outlook_provider_priority": SettingDefinition(
+        db_key="outlook.provider_priority",
+        default_value=["graph_api", "imap_new", "imap_old"],
+        category=SettingCategory.EMAIL,
+        description="Outlook 提供者优先级"
+    ),
+    "outlook_health_failure_threshold": SettingDefinition(
+        db_key="outlook.health_failure_threshold",
+        default_value=5,
+        category=SettingCategory.EMAIL,
+        description="Outlook 提供者连续失败次数阈值"
+    ),
+    "outlook_health_disable_duration": SettingDefinition(
+        db_key="outlook.health_disable_duration",
+        default_value=60,
+        category=SettingCategory.EMAIL,
+        description="Outlook 提供者禁用时长（秒）"
+    ),
+    "outlook_default_client_id": SettingDefinition(
+        db_key="outlook.default_client_id",
+        default_value="24d9a0ed-8787-4584-883c-2fd79308940a",
+        category=SettingCategory.EMAIL,
+        description="Outlook OAuth 默认 Client ID"
+    ),
 }
 
 # 属性名到数据库键名的映射（用于向后兼容）
@@ -320,6 +346,9 @@ SETTING_TYPES: Dict[str, Type] = {
     "cpa_enabled": bool,
     "email_code_timeout": int,
     "email_code_poll_interval": int,
+    "outlook_provider_priority": list,
+    "outlook_health_failure_threshold": int,
+    "outlook_health_disable_duration": int,
 }
 
 # 需要作为 SecretStr 处理的字段
@@ -346,6 +375,11 @@ def _convert_value(attr_name: str, value: str) -> Any:
             return value
         import json
         return json.loads(value) if value else {}
+    elif target_type == list:
+        if isinstance(value, list):
+            return value
+        import json
+        return json.loads(value) if value else []
     else:
         return value
 
@@ -356,7 +390,7 @@ def _value_to_string(value: Any) -> str:
         return value.get_secret_value()
     elif isinstance(value, bool):
         return "true" if value else "false"
-    elif isinstance(value, dict):
+    elif isinstance(value, (dict, list)):
         import json
         return json.dumps(value)
     elif value is None:
@@ -532,6 +566,12 @@ class Settings(BaseModel):
     # 验证码配置
     email_code_timeout: int = 120
     email_code_poll_interval: int = 3
+
+    # Outlook 配置
+    outlook_provider_priority: List[str] = ["graph_api", "imap_new", "imap_old"]
+    outlook_health_failure_threshold: int = 5
+    outlook_health_disable_duration: int = 60
+    outlook_default_client_id: str = "24d9a0ed-8787-4584-883c-2fd79308940a"
 
 
 # 全局配置实例

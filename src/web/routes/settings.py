@@ -734,3 +734,37 @@ async def test_cpa_connection(request: CPATestRequest):
         "success": success,
         "message": message
     }
+
+
+# ============== Outlook 设置 ==============
+
+class OutlookSettings(BaseModel):
+    """Outlook 设置"""
+    default_client_id: Optional[str] = None
+
+
+@router.get("/outlook")
+async def get_outlook_settings():
+    """获取 Outlook 设置"""
+    settings = get_settings()
+
+    return {
+        "default_client_id": settings.outlook_default_client_id,
+        "provider_priority": settings.outlook_provider_priority,
+        "health_failure_threshold": settings.outlook_health_failure_threshold,
+        "health_disable_duration": settings.outlook_health_disable_duration,
+    }
+
+
+@router.post("/outlook")
+async def update_outlook_settings(request: OutlookSettings):
+    """更新 Outlook 设置"""
+    update_dict = {}
+
+    if request.default_client_id is not None:
+        update_dict["outlook_default_client_id"] = request.default_client_id
+
+    if update_dict:
+        update_settings(**update_dict)
+
+    return {"success": True, "message": "Outlook 设置已更新"}

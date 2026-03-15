@@ -36,6 +36,7 @@
             <div class="tabs">
                 <button class="tab-btn active" data-tab="proxy">🌐 代理设置</button>
                 <button class="tab-btn" data-tab="cpa">☁️ CPA上传</button>
+                <button class="tab-btn" data-tab="outlook">📮 Outlook配置</button>
                 <button class="tab-btn" data-tab="registration">⚙️ 注册配置</button>
                 <button class="tab-btn" data-tab="email-code">📧 验证码配置</button>
                 <button class="tab-btn" data-tab="database">💾 数据库</button>
@@ -220,6 +221,30 @@
                             <div class="form-actions">
                                 <button type="submit" class="btn btn-primary">💾 保存设置</button>
                                 <button type="button" class="btn btn-secondary" id="test-cpa-btn">🔌 测试连接</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Outlook 配置 -->
+            <div class="tab-content" id="outlook-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Outlook OAuth 配置</h3>
+                        <span class="hint">配置 Outlook 邮箱 OAuth 认证参数</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="outlook-settings-form">
+                            <div class="form-group">
+                                <label for="outlook-default-client-id">默认 Client ID</label>
+                                <input type="text" id="outlook-default-client-id" name="default_client_id"
+                                    placeholder="24d9a0ed-8787-4584-883c-2fd79308940a">
+                                <p class="hint">Outlook OAuth 应用的 Client ID。导入账户时未填写 client_id 则使用此默认值。</p>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">💾 保存设置</button>
                             </div>
                         </form>
                     </div>
