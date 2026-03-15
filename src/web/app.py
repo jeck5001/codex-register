@@ -4,6 +4,7 @@ FastAPI 应用主文件
 """
 
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -21,11 +22,15 @@ from .task_manager import task_manager
 logger = logging.getLogger(__name__)
 
 # 获取项目根目录
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+# PyInstaller 打包后静态资源在 sys._MEIPASS，开发时在源码根目录
+if getattr(sys, 'frozen', False):
+    _RESOURCE_ROOT = Path(sys._MEIPASS)
+else:
+    _RESOURCE_ROOT = Path(__file__).parent.parent.parent
 
 # 静态文件和模板目录
-STATIC_DIR = PROJECT_ROOT / "static"
-TEMPLATES_DIR = PROJECT_ROOT / "templates"
+STATIC_DIR = _RESOURCE_ROOT / "static"
+TEMPLATES_DIR = _RESOURCE_ROOT / "templates"
 
 
 def create_app() -> FastAPI:

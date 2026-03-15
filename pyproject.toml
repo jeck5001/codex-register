@@ -22,7 +22,6 @@ dev = [
 ]
 
 [project.scripts]
-codex-register = "cli:main"
 codex-webui = "webui:main"
 
 [build-system]
@@ -31,3 +30,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.19.0",
+]

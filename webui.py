@@ -8,8 +8,16 @@ import sys
 from pathlib import Path
 
 # 添加项目根目录到 Python 路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+# PyInstaller 打包后 __file__ 在临时解压目录，需要用 sys.executable 所在目录作为数据目录
+import os
+if getattr(sys, 'frozen', False):
+    # 打包后：使用可执行文件所在目录
+    project_root = Path(sys.executable).parent
+    _src_root = Path(sys._MEIPASS)
+else:
+    project_root = Path(__file__).parent
+    _src_root = project_root
+sys.path.insert(0, str(_src_root))
 
 from src.core.utils import setup_logging
 from src.database.init_db import initialize_database
@@ -18,6 +26,16 @@ from src.config.settings import get_settings
 
 def setup_application():
     """设置应用程序"""
+    # 确保数据目录和日志目录在可执行文件所在目录（打包后也适用）
+    data_dir = project_root / "data"
+    logs_dir = project_root / "logs"
+    data_dir.mkdir(exist_ok=True)
+    logs_dir.mkdir(exist_ok=True)
+
+    # 将数据目录路径注入环境变量，供数据库配置使用
+    os.environ.setdefault("APP_DATA_DIR", str(data_dir))
+    os.environ.setdefault("APP_LOGS_DIR", str(logs_dir))
+
     # 初始化数据库（必须先于获取设置）
     try:
         initialize_database()
@@ -28,23 +46,16 @@ def setup_application():
     # 获取配置（需要数据库已初始化）
     settings = get_settings()
 
-    # 配置日志
+    # 配置日志（日志文件写到实际 logs 目录）
+    log_file = str(logs_dir / Path(settings.log_file).name)
     setup_logging(
         log_level=settings.log_level,
-        log_file=settings.log_file
+        log_file=log_file
     )
 
     logger = logging.getLogger(__name__)
     logger.info("数据库初始化完成")
-
-    # 检查数据目录
-    data_dir = project_root / "data"
-    data_dir.mkdir(exist_ok=True)
     logger.info(f"数据目录: {data_dir}")
-
-    # 检查日志目录
-    logs_dir = project_root / "logs"
-    logs_dir.mkdir(exist_ok=True)
     logger.info(f"日志目录: {logs_dir}")
 
     logger.info("应用程序设置完成")

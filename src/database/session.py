@@ -20,14 +20,14 @@ class DatabaseSessionManager:
 
     def __init__(self, database_url: str = None):
         if database_url is None:
-            # 默认使用项目根目录下的 SQLite 数据库
-            db_path = os.path.join(
+            # 优先使用 APP_DATA_DIR 环境变量（PyInstaller 打包后由 webui.py 设置）
+            data_dir = os.environ.get('APP_DATA_DIR') or os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                'data',
-                'database.db'
+                'data'
             )
+            db_path = os.path.join(data_dir, 'database.db')
             # 确保目录存在
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            os.makedirs(data_dir, exist_ok=True)
             database_url = f"sqlite:///{db_path}"
 
         self.database_url = database_url
