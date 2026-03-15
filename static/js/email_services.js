@@ -288,7 +288,7 @@ async function loadCustomServices() {
                         ${selectedCustom.has(service.id) ? 'checked' : ''}>
                 </td>
                 <td>${escapeHtml(service.name)}</td>
-                <td style="font-size: 0.75rem;">${escapeHtml(service.config?.api_url || '-')}</td>
+                <td style="font-size: 0.75rem;">${escapeHtml(service.config?.base_url || '-')}</td>
                 <td>
                     <span class="status-badge ${service.enabled ? 'active' : 'disabled'}">
                         ${service.enabled ? '启用' : '禁用'}
@@ -403,9 +403,9 @@ async function handleAddCustom(e) {
         service_type: 'custom_domain',
         name: formData.get('name'),
         config: {
-            api_url: formData.get('api_url'),
+            base_url: formData.get('api_url'),
             api_key: formData.get('api_key'),
-            domain: formData.get('domain')
+            default_domain: formData.get('domain')
         },
         enabled: formData.get('enabled') === 'on',
         priority: parseInt(formData.get('priority')) || 0
@@ -553,14 +553,14 @@ async function editCustomService(id) {
         // 填充表单
         document.getElementById('edit-custom-id').value = service.id;
         document.getElementById('edit-custom-name').value = service.name || '';
-        document.getElementById('edit-custom-api-url').value = service.config?.api_url || '';
+        document.getElementById('edit-custom-api-url').value = service.config?.base_url || '';
         document.getElementById('edit-custom-api-key').value = service.config?.api_key || '';
         document.getElementById('edit-custom-domain').value = service.config?.domain || '';
         document.getElementById('edit-custom-priority').value = service.priority || 0;
         document.getElementById('edit-custom-enabled').checked = service.enabled;
 
         // 清空密码提示
-        document.getElementById('edit-custom-api-key').placeholder = service.config?.api_key ? '已设置，留空保持不变' : 'API Key';
+        document.getElementById('edit-custom-api-key').placeholder = service.config?.has_api_key ? '已设置，留空保持不变' : 'API Key';
 
         // 显示模态框
         elements.editCustomModal.classList.add('active');
@@ -586,8 +586,8 @@ async function handleEditCustom(e) {
 
     // 构建配置
     const config = {
-        api_url: formData.get('api_url'),
-        domain: formData.get('domain')
+        base_url: formData.get('api_url'),
+        default_domain: formData.get('domain')
     };
 
     // 只有在填写了 API Key 时才更新

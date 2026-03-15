@@ -225,6 +225,11 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
                 if db_service:
                     config = db_service.config.copy() if db_service.config else {}
+                    # 兼容旧版字段名 api_url -> base_url
+                    if 'api_url' in config and 'base_url' not in config:
+                        config['base_url'] = config.pop('api_url')
+                    if 'domain' in config and 'default_domain' not in config:
+                        config['default_domain'] = config.pop('domain')
                     # 更新任务关联的邮箱服务
                     crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
                     logger.info(f"使用数据库邮箱服务: {db_service.name} (ID: {db_service.id})")
@@ -249,6 +254,11 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
 
                     if db_service and db_service.config:
                         config = db_service.config.copy()
+                        # 兼容旧版字段名 api_url -> base_url
+                        if 'api_url' in config and 'base_url' not in config:
+                            config['base_url'] = config.pop('api_url')
+                        if 'domain' in config and 'default_domain' not in config:
+                            config['default_domain'] = config.pop('domain')
                         crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
                         logger.info(f"使用数据库自定义域名服务: {db_service.name}")
                     elif settings.custom_domain_base_url and settings.custom_domain_api_key:
