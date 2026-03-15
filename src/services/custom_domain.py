@@ -113,7 +113,32 @@ class CustomDomainEmailService(BaseEmailService):
         kwargs["headers"].update(self._get_headers())
 
         try:
-            response = self.http_client.request(method, url, **kwargs)
+            # POST 请求禁用自动重定向，手动处理以保持 POST 方法（避免 HTTP→HTTPS 重定向时被转为 GET）
+            if method.upper() == "POST":
+                kwargs["allow_redirects"] = False
+                response = self.http_client.request(method, url, **kwargs)
+                # 处理重定向
+                max_redirects = 5
+                redirect_count = 0
+                while response.status_code in (301, 302, 303, 307, 308) and redirect_count < max_redirects:
+                    location = response.headers.get("Location", "")
+                    if not location:
+                        break
+                    import urllib.parse as _urlparse
+                    redirect_url = _urlparse.urljoin(url, location)
+                    # 307/308 保持 POST，其余（301/302/303）转为 GET
+                    if response.status_code in (307, 308):
+                        redirect_method = method
+                        redirect_kwargs = kwargs
+                    else:
+                        redirect_method = "GET"
+                        # GET 不传 body
+                        redirect_kwargs = {k: v for k, v in kwargs.items() if k not in ("json", "data")}
+                    response = self.http_client.request(redirect_method, redirect_url, **redirect_kwargs)
+                    url = redirect_url
+                    redirect_count += 1
+            else:
+                response = self.http_client.request(method, url, **kwargs)
 
             if response.status_code >= 400:
                 error_msg = f"API 请求失败: {response.status_code}"
