@@ -22,6 +22,7 @@ from ..database import crud
 from ..database.session import get_db
 from ..config.constants import (
     OPENAI_API_ENDPOINTS,
+    OPENAI_PAGE_TYPES,
     generate_random_user_info,
     OTP_CODE_PATTERN,
     DEFAULT_PASSWORD_LENGTH,
@@ -50,6 +51,7 @@ class RegistrationResult:
     error_message: str = ""
     logs: list = None
     metadata: dict = None
+    source: str = "register"  # 'register' 或 'login'，区分账号来源
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -66,7 +68,18 @@ class RegistrationResult:
             "error_message": self.error_message,
             "logs": self.logs or [],
             "metadata": self.metadata or {},
+            "source": self.source,
         }
+
+
+@dataclass
+class SignupFormResult:
+    """提交注册表单的结果"""
+    success: bool
+    page_type: str = ""  # 响应中的 page.type 字段
+    is_existing_account: bool = False  # 是否为已注册账号
+    response_data: Dict[str, Any] = None  # 完整的响应数据
+    error_message: str = ""
 
 
 class RegistrationEngine:
@@ -119,6 +132,7 @@ class RegistrationEngine:
         self.session_token: Optional[str] = None  # 会话令牌
         self.logs: list = []
         self._otp_sent_at: Optional[float] = None  # OTP 发送时间戳
+        self._is_existing_account: bool = False  # 是否为已注册账号（用于自动登录）
 
     def _log(self, message: str, level: str = "info"):
         """记录日志"""
@@ -243,8 +257,13 @@ class RegistrationEngine:
             self._log(f"Sentinel 检查异常: {e}", "warning")
             return None
 
-    def _submit_signup_form(self, did: str, sen_token: Optional[str]) -> bool:
-        """提交注册表单"""
+    def _submit_signup_form(self, did: str, sen_token: Optional[str]) -> SignupFormResult:
+        """
+        提交注册表单
+
+        Returns:
+            SignupFormResult: 提交结果，包含账号状态判断
+        """
         try:
             signup_body = f'{{"username":{{"value":"{self.email}","kind":"email"}},"screen_hint":"signup"}}'
 
@@ -265,11 +284,41 @@ class RegistrationEngine:
             )
 
             self._log(f"提交注册表单状态: {response.status_code}")
-            return response.status_code == 200
+
+            if response.status_code != 200:
+                return SignupFormResult(
+                    success=False,
+                    error_message=f"HTTP {response.status_code}: {response.text[:200]}"
+                )
+
+            # 解析响应判断账号状态
+            try:
+                response_data = response.json()
+                page_type = response_data.get("page", {}).get("type", "")
+                self._log(f"响应页面类型: {page_type}")
+
+                # 判断是否为已注册账号
+                is_existing = page_type == OPENAI_PAGE_TYPES["EMAIL_OTP_VERIFICATION"]
+
+                if is_existing:
+                    self._log(f"检测到已注册账号，将自动切换到登录流程")
+                    self._is_existing_account = True
+
+                return SignupFormResult(
+                    success=True,
+                    page_type=page_type,
+                    is_existing_account=is_existing,
+                    response_data=response_data
+                )
+
+            except Exception as parse_error:
+                self._log(f"解析响应失败: {parse_error}", "warning")
+                # 无法解析，默认成功
+                return SignupFormResult(success=True)
 
         except Exception as e:
             self._log(f"提交注册表单失败: {e}", "error")
-            return False
+            return SignupFormResult(success=False, error_message=str(e))
 
     def _register_password(self) -> Tuple[bool, Optional[str]]:
         """注册密码"""
@@ -586,6 +635,11 @@ class RegistrationEngine:
         """
         执行完整的注册流程
 
+        支持已注册账号自动登录：
+        - 如果检测到邮箱已注册，自动切换到登录流程
+        - 已注册账号跳过：设置密码、发送验证码、创建用户账户
+        - 共用步骤：获取验证码、验证验证码、Workspace 和 OAuth 回调
+
         Returns:
             RegistrationResult: 注册结果
         """
@@ -641,24 +695,33 @@ class RegistrationEngine:
             else:
                 self._log("Sentinel 检查失败或未启用", "warning")
 
-            # 7. 提交注册表单
+            # 7. 提交注册表单 + 解析响应判断账号状态
             self._log("7. 提交注册表单...")
-            if not self._submit_signup_form(did, sen_token):
-                result.error_message = "提交注册表单失败"
+            signup_result = self._submit_signup_form(did, sen_token)
+            if not signup_result.success:
+                result.error_message = f"提交注册表单失败: {signup_result.error_message}"
                 return result
 
-            # 8. 注册密码
-            self._log("8. 注册密码...")
-            password_ok, password = self._register_password()
-            if not password_ok:
-                result.error_message = "注册密码失败"
-                return result
+            # 8. [已注册账号跳过] 注册密码
+            if self._is_existing_account:
+                self._log("8. [已注册账号] 跳过密码设置，OTP 已自动发送")
+            else:
+                self._log("8. 注册密码...")
+                password_ok, password = self._register_password()
+                if not password_ok:
+                    result.error_message = "注册密码失败"
+                    return result
 
-            # 9. 发送验证码
-            self._log("9. 发送验证码...")
-            if not self._send_verification_code():
-                result.error_message = "发送验证码失败"
-                return result
+            # 9. [已注册账号跳过] 发送验证码
+            if self._is_existing_account:
+                self._log("9. [已注册账号] 跳过发送验证码，使用自动发送的 OTP")
+                # 已注册账号的 OTP 在提交表单时已自动发送，记录时间戳
+                self._otp_sent_at = time.time()
+            else:
+                self._log("9. 发送验证码...")
+                if not self._send_verification_code():
+                    result.error_message = "发送验证码失败"
+                    return result
 
             # 10. 获取验证码
             self._log("10. 等待验证码...")
@@ -673,11 +736,14 @@ class RegistrationEngine:
                 result.error_message = "验证验证码失败"
                 return result
 
-            # 12. 创建用户账户
-            self._log("12. 创建用户账户...")
-            if not self._create_user_account():
-                result.error_message = "创建用户账户失败"
-                return result
+            # 12. [已注册账号跳过] 创建用户账户
+            if self._is_existing_account:
+                self._log("12. [已注册账号] 跳过创建用户账户")
+            else:
+                self._log("12. 创建用户账户...")
+                if not self._create_user_account():
+                    result.error_message = "创建用户账户失败"
+                    return result
 
             # 13. 获取 Workspace ID
             self._log("13. 获取 Workspace ID...")
@@ -714,7 +780,10 @@ class RegistrationEngine:
             result.access_token = token_info.get("access_token", "")
             result.refresh_token = token_info.get("refresh_token", "")
             result.id_token = token_info.get("id_token", "")
-            result.password = self.password or ""  # 保存密码
+            result.password = self.password or ""  # 保存密码（已注册账号为空）
+
+            # 设置来源标记
+            result.source = "login" if self._is_existing_account else "register"
 
             # 尝试获取 session_token 从 cookie
             session_cookie = self.session.cookies.get("__Secure-next-auth.session-token")
@@ -725,7 +794,10 @@ class RegistrationEngine:
 
             # 17. 完成
             self._log("=" * 60)
-            self._log(f"注册成功!")
+            if self._is_existing_account:
+                self._log("登录成功! (已注册账号)")
+            else:
+                self._log("注册成功!")
             self._log(f"邮箱: {result.email}")
             self._log(f"Account ID: {result.account_id}")
             self._log(f"Workspace ID: {result.workspace_id}")
@@ -736,6 +808,7 @@ class RegistrationEngine:
                 "email_service": self.email_service.service_type.value,
                 "proxy_used": self.proxy_url,
                 "registered_at": datetime.now().isoformat(),
+                "is_existing_account": self._is_existing_account,
             }
 
             return result
@@ -778,7 +851,8 @@ class RegistrationEngine:
                     refresh_token=result.refresh_token,
                     id_token=result.id_token,
                     proxy_used=self.proxy_url,
-                    extra_data=result.metadata
+                    extra_data=result.metadata,
+                    source=result.source
                 )
 
                 self._log(f"账户已保存到数据库，ID: {account.id}")
