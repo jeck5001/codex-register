@@ -52,9 +52,10 @@ class RegistrationSettings(BaseModel):
 
 class WebUISettings(BaseModel):
     """Web UI 设置"""
-    host: str = "0.0.0.0"
-    port: int = 8000
-    debug: bool = False
+    host: Optional[str] = None
+    port: Optional[int] = None
+    debug: Optional[bool] = None
+    access_password: Optional[str] = None
 
 
 class AllSettings(BaseModel):
@@ -96,6 +97,7 @@ async def get_all_settings():
             "host": settings.webui_host,
             "port": settings.webui_port,
             "debug": settings.debug,
+            "has_access_password": bool(settings.webui_access_password and settings.webui_access_password.get_secret_value()),
         },
         "tempmail": {
             "base_url": settings.tempmail_base_url,
@@ -315,6 +317,23 @@ async def update_registration_settings(request: RegistrationSettings):
     )
 
     return {"success": True, "message": "注册设置已更新"}
+
+
+@router.post("/webui")
+async def update_webui_settings(request: WebUISettings):
+    """更新 Web UI 设置"""
+    update_dict = {}
+    if request.host is not None:
+        update_dict["webui_host"] = request.host
+    if request.port is not None:
+        update_dict["webui_port"] = request.port
+    if request.debug is not None:
+        update_dict["debug"] = request.debug
+    if request.access_password:
+        update_dict["webui_access_password"] = request.access_password
+
+    update_settings(**update_dict)
+    return {"success": True, "message": "Web UI 设置已更新"}
 
 
 @router.get("/database")

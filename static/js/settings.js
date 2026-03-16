@@ -47,7 +47,9 @@ const elements = {
     // 验证码设置
     emailCodeForm: document.getElementById('email-code-form'),
     // Outlook 设置
-    outlookSettingsForm: document.getElementById('outlook-settings-form')
+    outlookSettingsForm: document.getElementById('outlook-settings-form'),
+    // Web UI 访问控制
+    webuiSettingsForm: document.getElementById('webui-settings-form')
 };
 
 // 选中的服务 ID
@@ -231,6 +233,10 @@ function initEventListeners() {
     if (elements.outlookSettingsForm) {
         elements.outlookSettingsForm.addEventListener('submit', handleSaveOutlookSettings);
     }
+
+    if (elements.webuiSettingsForm) {
+        elements.webuiSettingsForm.addEventListener('submit', handleSaveWebuiSettings);
+    }
 }
 
 // 加载设置
@@ -269,9 +275,37 @@ async function loadSettings() {
         // 加载 Outlook 设置
         loadOutlookSettings();
 
+        // Web UI 访问密码提示
+        if (data.webui?.has_access_password) {
+            const input = document.getElementById('webui-access-password');
+            if (input) {
+                input.value = '';
+                input.placeholder = '已配置，留空保持不变';
+            }
+        }
+
     } catch (error) {
         console.error('加载设置失败:', error);
         toast.error('加载设置失败');
+    }
+}
+
+// 保存 Web UI 设置
+async function handleSaveWebuiSettings(e) {
+    e.preventDefault();
+
+    const accessPassword = document.getElementById('webui-access-password').value;
+    const payload = {
+        access_password: accessPassword || null
+    };
+
+    try {
+        await api.post('/settings/webui', payload);
+        toast.success('Web UI 设置已更新');
+        document.getElementById('webui-access-password').value = '';
+    } catch (error) {
+        console.error('保存 Web UI 设置失败:', error);
+        toast.error('保存 Web UI 设置失败');
     }
 }
 

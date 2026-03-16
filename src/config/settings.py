@@ -87,6 +87,13 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         description="Web UI 密钥",
         is_secret=True
     ),
+    "webui_access_password": SettingDefinition(
+        db_key="webui.access_password",
+        default_value="admin123",
+        category=SettingCategory.WEBUI,
+        description="Web UI 访问密码",
+        is_secret=True
+    ),
 
     # 日志配置
     "log_level": SettingDefinition(
@@ -434,6 +441,14 @@ def _convert_value(attr_name: str, value: str) -> Any:
         return value
 
 
+def _normalize_database_url(url: str) -> str:
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
 def _value_to_string(value: Any) -> str:
     """将值转换为数据库存储的字符串"""
     if isinstance(value, SecretStr):
@@ -462,7 +477,12 @@ def init_default_settings() -> None:
             for attr_name, defn in SETTING_DEFINITIONS.items():
                 existing = get_setting(db, defn.db_key)
                 if not existing:
-                    default_value = _value_to_string(defn.default_value)
+                    default_value = defn.default_value
+                    if attr_name == "database_url":
+                        env_url = os.environ.get("APP_DATABASE_URL") or os.environ.get("DATABASE_URL")
+                        if env_url:
+                            default_value = _normalize_database_url(env_url)
+                    default_value = _value_to_string(default_value)
                     set_setting(
                         db,
                         defn.db_key,
@@ -490,6 +510,9 @@ def _load_settings_from_db() -> Dict[str, Any]:
                 else:
                     # 数据库中没有此设置，使用默认值
                     settings_dict[attr_name] = _convert_value(attr_name, _value_to_string(defn.default_value))
+            env_url = os.environ.get("APP_DATABASE_URL") or os.environ.get("DATABASE_URL")
+            if env_url:
+                settings_dict["database_url"] = _normalize_database_url(env_url)
         return settings_dict
     except Exception as e:
         print(f"[Settings] 从数据库加载设置失败: {e}，使用默认值")
@@ -534,9 +557,14 @@ class Settings(BaseModel):
     @field_validator('database_url', mode='before')
     @classmethod
     def validate_database_url(cls, v):
+        if isinstance(v, str):
+            if v.startswith(("postgres://", "postgresql://")):
+                return _normalize_database_url(v)
+            if v.startswith(("postgresql+psycopg://", "postgresql+psycopg2://")):
+                return v
         if isinstance(v, str) and v.startswith("sqlite:///"):
             return v
-        if isinstance(v, str) and not v.startswith(("sqlite:///", "postgresql://", "mysql://")):
+        if isinstance(v, str) and not v.startswith(("sqlite:///", "postgresql://", "postgresql+psycopg://", "postgresql+psycopg2://", "mysql://")):
             # 如果是文件路径，转换为 SQLite URL
             if os.path.isabs(v) or ":/" not in v:
                 return f"sqlite:///{v}"
@@ -546,6 +574,7 @@ class Settings(BaseModel):
     webui_host: str = "0.0.0.0"
     webui_port: int = 8000
     webui_secret_key: SecretStr = SecretStr("your-secret-key-change-in-production")
+    webui_access_password: SecretStr = SecretStr("admin123")
 
     # 日志配置
     log_level: str = "INFO"

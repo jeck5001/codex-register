@@ -19,6 +19,7 @@
                 <a href="/accounts" class="nav-link">账号管理</a>
                 <a href="/email-services" class="nav-link">邮箱服务</a>
                 <a href="/settings" class="nav-link active">设置</a>
+                <a href="/logout" class="nav-link">退出</a>
             </div>
             <button class="theme-toggle" onclick="theme.toggle()" title="切换主题">
                 🌙
@@ -35,6 +36,7 @@
             <!-- 设置标签页 -->
             <div class="tabs">
                 <button class="tab-btn active" data-tab="proxy">🌐 代理设置</button>
+                <button class="tab-btn" data-tab="webui">🔒 访问控制</button>
                 <button class="tab-btn" data-tab="cpa">☁️ CPA上传</button>
                 <button class="tab-btn" data-tab="outlook">📮 Outlook配置</button>
                 <button class="tab-btn" data-tab="registration">⚙️ 注册配置</button>
@@ -177,6 +179,27 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 访问控制 -->
+            <div class="tab-content" id="webui-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Web UI 访问密码</h3>
+                        <span class="hint">用于访问页面的密码，留空表示不修改</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="webui-settings-form">
+                            <div class="form-group">
+                                <label for="webui-access-password">访问密码</label>
+                                <input type="password" id="webui-access-password" name="access_password" placeholder="留空保持不变" autocomplete="new-password">
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">💾 保存设置</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>

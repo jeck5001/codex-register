@@ -36,6 +36,7 @@
   - 注册参数（超时、重试、密码长度等）
   - 验证码等待配置
   - 数据库管理（备份、清理）
+  - 支持远程 PostgreSQL
 
 ## 快速开始
 
@@ -66,6 +67,17 @@ python webui.py --host 0.0.0.0 --port 8080
 # 调试模式（热重载）
 python webui.py --debug
 ```
+
+### 使用远程 PostgreSQL
+
+通过环境变量指定数据库连接字符串：
+
+```bash
+export APP_DATABASE_URL="postgresql://user:password@host:5432/dbname"
+python webui.py
+```
+
+也支持 `DATABASE_URL`，优先级低于 `APP_DATABASE_URL`。
 
 启动后访问 http://127.0.0.1:8000
 
@@ -107,7 +119,7 @@ codex-register-v2/
 | 层级 | 技术 |
 |------|------|
 | Web 框架 | FastAPI + Uvicorn |
-| 数据库 | SQLAlchemy + SQLite |
+| 数据库 | SQLAlchemy + SQLite / PostgreSQL |
 | 模板引擎 | Jinja2 |
 | HTTP 客户端 | curl_cffi（浏览器指纹模拟） |
 | 实时通信 | WebSocket（websockets 库） |
