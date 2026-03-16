@@ -1,6 +1,9 @@
 # OpenAI 自动注册系统 v2
 
-自动化注册 OpenAI 账号的 Web UI 系统，支持多种邮箱服务、批量注册、代理管理和账号管理。
+自动化注册 OpenAI 账号的 Web UI 系统，支持多种邮箱服务、并发批量注册、代理管理和账号管理。
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 
 ## 功能特性
 
@@ -13,6 +16,12 @@
   - 单次注册
   - 批量注册（可配置数量和间隔时间）
   - Outlook 批量注册（指定账户逐一注册）
+
+- **并发控制**
+  - 流水线模式（Pipeline）：每隔 interval 秒启动新任务，限制最大并发数
+  - 并行模式（Parallel）：所有任务同时提交，Semaphore 控制最大并发
+  - 并发数可在 UI 自定义（1-50）
+  - 日志混合显示，带 `[任务N]` 前缀区分
 
 - **实时监控**
   - WebSocket 实时日志推送
@@ -28,7 +37,9 @@
   - 查看、删除、批量操作
   - Token 刷新与验证
   - 导出（JSON / CSV / CPA 格式）
-  - CPA 上传（Codex Protocol API）
+    - 单个账号导出为独立 `.json` 文件
+    - 多个账号打包为 `.zip`，每个账号一个独立文件
+  - CPA 上传（Codex Protocol API，直连不走代理）
 
 - **系统设置**
   - 代理配置（静态 + 动态）
@@ -96,7 +107,8 @@ codex-register-v2/
 │   └── web/            # FastAPI Web 应用
 │       ├── app.py      # 应用入口、路由挂载
 │       ├── routes/     # API 路由
-│       └── websocket.py # WebSocket 处理
+│       ├── task_manager.py  # 任务/日志/WebSocket 管理
+│       └── routes/websocket.py  # WebSocket 处理
 ├── templates/          # Jinja2 HTML 模板
 ├── static/             # 静态资源（CSS / JS）
 └── data/               # 运行时数据目录（数据库、日志）
@@ -110,7 +122,8 @@ codex-register-v2/
 | 数据库 | SQLAlchemy + SQLite |
 | 模板引擎 | Jinja2 |
 | HTTP 客户端 | curl_cffi（浏览器指纹模拟） |
-| 实时通信 | WebSocket（websockets 库） |
+| 实时通信 | WebSocket |
+| 并发 | asyncio Semaphore + ThreadPoolExecutor |
 | 前端 | 原生 JavaScript（无框架） |
 | 打包 | PyInstaller |
 
@@ -121,7 +134,7 @@ codex-register-v2/
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/registration/start` | 启动单次注册 |
-| POST | `/api/registration/batch` | 启动批量注册 |
+| POST | `/api/registration/batch` | 启动批量注册（支持 `concurrency`、`mode` 参数） |
 | GET | `/api/registration/batch/{id}` | 批量任务状态 |
 | POST | `/api/registration/batch/{id}/cancel` | 取消批量任务 |
 | POST | `/api/registration/outlook-batch` | 启动 Outlook 批量注册 |
@@ -144,7 +157,7 @@ codex-register-v2/
 | POST | `/api/accounts/batch-delete` | 批量删除 |
 | POST | `/api/accounts/export/json` | 导出 JSON |
 | POST | `/api/accounts/export/csv` | 导出 CSV |
-| POST | `/api/accounts/export/cpa` | 导出 CPA 格式 |
+| POST | `/api/accounts/export/cpa` | 导出 CPA 格式（单文件或 ZIP） |
 | POST | `/api/accounts/{id}/refresh` | 刷新 Token |
 | POST | `/api/accounts/batch-refresh` | 批量刷新 Token |
 | POST | `/api/accounts/{id}/validate` | 验证 Token |
@@ -180,7 +193,7 @@ codex-register-v2/
 | 路径 | 说明 |
 |------|------|
 | `ws://host/api/ws/task/{uuid}` | 单任务实时日志 |
-| `ws://host/api/ws/batch/{id}` | 批量任务实时状态 |
+| `ws://host/api/ws/batch/{id}` | 批量任务实时状态与日志 |
 
 ## 注意事项
 
@@ -189,3 +202,9 @@ codex-register-v2/
 - 日志文件写入 `logs/` 目录
 - 代理设置优先级：动态代理 > 代理列表（随机） > 静态默认代理
 - 注册时自动随机生成用户名和生日（年龄范围 18-45 岁）
+- CPA 上传始终直连，不经过代理
+- 批量注册并发数上限为 50，线程池大小已相应调整
+
+## License
+
+[MIT](LICENSE)
