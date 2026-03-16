@@ -13,8 +13,8 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# 全局线程池
-_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="reg_worker")
+# 全局线程池（支持最多 50 个并发注册任务）
+_executor = ThreadPoolExecutor(max_workers=50, thread_name_prefix="reg_worker")
 
 # 任务日志队列 (task_uuid -> list of logs)
 _log_queues: Dict[str, List[str]] = defaultdict(list)
@@ -344,10 +344,11 @@ class TaskManager:
                 _ws_sent_index[key].pop(id(websocket), None)
         logger.info(f"批量任务 WebSocket 连接已注销: {batch_id}")
 
-    def create_log_callback(self, task_uuid: str) -> Callable[[str], None]:
-        """创建日志回调函数"""
+    def create_log_callback(self, task_uuid: str, prefix: str = "") -> Callable[[str], None]:
+        """创建日志回调函数，可附加任务编号前缀"""
         def callback(msg: str):
-            self.add_log(task_uuid, msg)
+            full_msg = f"{prefix} {msg}" if prefix else msg
+            self.add_log(task_uuid, full_msg)
         return callback
 
     def create_check_cancelled_callback(self, task_uuid: str) -> Callable[[], bool]:
