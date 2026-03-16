@@ -344,11 +344,14 @@ class TaskManager:
                 _ws_sent_index[key].pop(id(websocket), None)
         logger.info(f"批量任务 WebSocket 连接已注销: {batch_id}")
 
-    def create_log_callback(self, task_uuid: str, prefix: str = "") -> Callable[[str], None]:
-        """创建日志回调函数，可附加任务编号前缀"""
+    def create_log_callback(self, task_uuid: str, prefix: str = "", batch_id: str = "") -> Callable[[str], None]:
+        """创建日志回调函数，可附加任务编号前缀，并同时推送到批量任务频道"""
         def callback(msg: str):
             full_msg = f"{prefix} {msg}" if prefix else msg
             self.add_log(task_uuid, full_msg)
+            # 如果属于批量任务，同步推送到 batch 频道，前端可在混合日志中看到详细步骤
+            if batch_id:
+                self.add_batch_log(batch_id, full_msg)
         return callback
 
     def create_check_cancelled_callback(self, task_uuid: str) -> Callable[[], bool]:
