@@ -39,6 +39,7 @@ class AccountResponse(BaseModel):
     proxy_used: Optional[str] = None
     cpa_uploaded: bool = False
     cpa_uploaded_at: Optional[str] = None
+    cookies: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -56,6 +57,7 @@ class AccountUpdateRequest(BaseModel):
     """账号更新请求"""
     status: Optional[str] = None
     metadata: Optional[dict] = None
+    cookies: Optional[str] = None  # 完整 cookie 字符串，用于支付请求
 
 
 class BatchDeleteRequest(BaseModel):
@@ -116,6 +118,7 @@ def account_to_response(account: Account) -> AccountResponse:
         proxy_used=account.proxy_used,
         cpa_uploaded=account.cpa_uploaded or False,
         cpa_uploaded_at=account.cpa_uploaded_at.isoformat() if account.cpa_uploaded_at else None,
+        cookies=account.cookies,
         created_at=account.created_at.isoformat() if account.created_at else None,
         updated_at=account.updated_at.isoformat() if account.updated_at else None,
     )
@@ -216,8 +219,22 @@ async def update_account(account_id: int, request: AccountUpdateRequest):
             current_metadata.update(request.metadata)
             update_data["metadata"] = current_metadata
 
+        if request.cookies is not None:
+            # 留空则清空，非空则更新
+            update_data["cookies"] = request.cookies or None
+
         account = crud.update_account(db, account_id, **update_data)
         return account_to_response(account)
+
+
+@router.get("/{account_id}/cookies")
+async def get_account_cookies(account_id: int):
+    """获取账号的 cookie 字符串（仅供支付使用）"""
+    with get_db() as db:
+        account = crud.get_account_by_id(db, account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="账号不存在")
+        return {"account_id": account_id, "cookies": account.cookies or ""}
 
 
 @router.delete("/{account_id}")

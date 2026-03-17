@@ -613,6 +613,17 @@ async function viewAccount(id) {
                         ${tokens.refresh_token ? `<button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${escapeHtml(tokens.refresh_token)}')" style="margin-left: 8px;">📋</button>` : ''}
                     </div>
                 </div>
+                <div class="info-item" style="grid-column: span 2;">
+                    <span class="label">Cookies（支付用）</span>
+                    <div class="value">
+                        <textarea id="cookies-input-${id}" rows="3"
+                            style="width:100%;font-size:0.7rem;font-family:var(--font-mono);background:var(--surface-hover);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text-primary);resize:vertical;"
+                            placeholder="粘贴完整 cookie 字符串，留空则清除">${escapeHtml(account.cookies || '')}</textarea>
+                        <button class="btn btn-secondary btn-sm" style="margin-top:4px" onclick="saveCookies(${id})">
+                            保存 Cookies
+                        </button>
+                    </div>
+                </div>
             </div>
             <div style="margin-top: var(--spacing-lg); display: flex; gap: var(--spacing-sm);">
                 <button class="btn btn-primary" onclick="refreshToken(${id}); elements.detailModal.classList.remove('active');">
@@ -859,5 +870,18 @@ async function handleBatchUploadTm() {
         toast.error('批量上传失败: ' + e.message);
     } finally {
         updateBatchButtons();
+    }
+}
+
+// 保存账号 Cookies
+async function saveCookies(id) {
+    const textarea = document.getElementById(`cookies-input-${id}`);
+    if (!textarea) return;
+    const cookiesValue = textarea.value.trim();
+    try {
+        await api.patch(`/accounts/${id}`, { cookies: cookiesValue });
+        toast.success('Cookies 已保存');
+    } catch (e) {
+        toast.error('保存 Cookies 失败: ' + e.message);
     }
 }

@@ -97,6 +97,7 @@ class DatabaseSessionManager:
             ("accounts", "source", "VARCHAR(20) DEFAULT 'register'"),
             ("accounts", "subscription_type", "VARCHAR(20)"),
             ("accounts", "subscription_at", "DATETIME"),
+            ("accounts", "cookies", "TEXT"),
         ]
 
         with self.engine.connect() as conn:

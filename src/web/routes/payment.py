@@ -38,10 +38,12 @@ class GenerateLinkRequest(BaseModel):
     seat_quantity: int = 5
     proxy: Optional[str] = None
     auto_open: bool = False  # 生成后是否自动无痕打开
+    country: str = "SG"  # 计费国家，决定货币  # 生成后是否自动无痕打开
 
 
 class OpenIncognitoRequest(BaseModel):
     url: str
+    account_id: Optional[int] = None  # 可选，用于注入账号 cookie
 
 
 class MarkSubscriptionRequest(BaseModel):
@@ -83,7 +85,7 @@ def generate_payment_link(request: GenerateLinkRequest):
 
         try:
             if request.plan_type == "plus":
-                link = generate_plus_link(account, proxy)
+                link = generate_plus_link(account, proxy, country=request.country)
             elif request.plan_type == "team":
                 link = generate_team_link(
                     account,
@@ -91,6 +93,7 @@ def generate_payment_link(request: GenerateLinkRequest):
                     price_interval=request.price_interval,
                     seat_quantity=request.seat_quantity,
                     proxy=proxy,
+                    country=request.country,
                 )
             else:
                 raise HTTPException(status_code=400, detail="plan_type 必须为 plus 或 team")
@@ -102,7 +105,8 @@ def generate_payment_link(request: GenerateLinkRequest):
 
     opened = False
     if request.auto_open and link:
-        opened = open_url_incognito(link)
+        cookies_str = account.cookies if account else None
+        opened = open_url_incognito(link, cookies_str)
 
     return {
         "success": True,
@@ -114,13 +118,21 @@ def generate_payment_link(request: GenerateLinkRequest):
 
 @router.post("/open-incognito")
 def open_browser_incognito(request: OpenIncognitoRequest):
-    """后端命令行以无痕模式打开指定 URL"""
+    """后端以无痕模式打开指定 URL，可注入账号 cookie"""
     if not request.url:
         raise HTTPException(status_code=400, detail="URL 不能为空")
-    success = open_url_incognito(request.url)
+
+    cookies_str = None
+    if request.account_id:
+        with get_db() as db:
+            account = db.query(Account).filter(Account.id == request.account_id).first()
+            if account:
+                cookies_str = account.cookies
+
+    success = open_url_incognito(request.url, cookies_str)
     if success:
         return {"success": True, "message": "已在无痕模式打开浏览器"}
-    return {"success": False, "message": "未找到可用的 Chrome/Edge，请手动复制链接"}
+    return {"success": False, "message": "未找到可用的浏览器，请手动复制链接"}
 
 
 # ============== 订阅状态 ==============

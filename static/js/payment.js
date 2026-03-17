@@ -2,6 +2,12 @@
  * 支付页面 JavaScript
  */
 
+const COUNTRY_CURRENCY_MAP = {
+    SG: 'SGD', US: 'USD', TR: 'TRY', JP: 'JPY',
+    HK: 'HKD', GB: 'GBP', EU: 'EUR', AU: 'AUD',
+    CA: 'CAD', IN: 'INR', BR: 'BRL', MX: 'MXN',
+};
+
 let selectedPlan = 'plus';
 let generatedLink = '';
 
@@ -28,6 +34,13 @@ async function loadAccounts() {
     }
 }
 
+// 国家切换
+function onCountryChange() {
+    const country = document.getElementById('country-select').value;
+    const currency = COUNTRY_CURRENCY_MAP[country] || 'USD';
+    document.getElementById('currency-display').value = currency;
+}
+
 // 选择套餐
 function selectPlan(plan) {
     selectedPlan = plan;
@@ -47,9 +60,12 @@ async function generateLink() {
         return;
     }
 
+    const country = document.getElementById('country-select').value || 'SG';
+
     const body = {
         account_id: parseInt(accountId),
         plan_type: selectedPlan,
+        country: country,
     };
 
     if (selectedPlan === 'team') {
@@ -57,6 +73,9 @@ async function generateLink() {
         body.seat_quantity = parseInt(document.getElementById('seat-quantity').value) || 5;
         body.price_interval = document.getElementById('price-interval').value;
     }
+
+    const btn = document.querySelector('.form-actions .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
 
     try {
         const resp = await fetch('/api/payment/generate-link', {
@@ -76,6 +95,8 @@ async function generateLink() {
         }
     } catch (e) {
         ui.showToast('请求失败: ' + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '生成支付链接'; }
     }
 }
 
@@ -85,7 +106,6 @@ function copyLink() {
     navigator.clipboard.writeText(generatedLink).then(() => {
         ui.showToast('已复制到剪贴板', 'success');
     }).catch(() => {
-        // 降级方案
         const ta = document.getElementById('link-text');
         ta.select();
         document.execCommand('copy');
@@ -93,19 +113,23 @@ function copyLink() {
     });
 }
 
-// 无痕打开浏览器
+// 无痕打开浏览器（携带账号 cookie）
 async function openIncognito() {
     if (!generatedLink) {
         ui.showToast('请先生成链接', 'warning');
         return;
     }
+    const accountId = document.getElementById('account-select').value;
     const statusEl = document.getElementById('open-status');
     statusEl.textContent = '正在打开...';
     try {
+        const body = { url: generatedLink };
+        if (accountId) body.account_id = parseInt(accountId);
+
         const resp = await fetch('/api/payment/open-incognito', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: generatedLink }),
+            body: JSON.stringify(body),
         });
         const data = await resp.json();
         if (data.success) {
