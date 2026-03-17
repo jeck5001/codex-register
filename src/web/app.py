@@ -151,6 +151,11 @@ def create_app() -> FastAPI:
             return _redirect_to_login(request)
         return templates.TemplateResponse("settings.html", {"request": request})
 
+    @app.get("/payment", response_class=HTMLResponse)
+    async def payment_page(request: Request):
+        """支付页面"""
+        return templates.TemplateResponse("payment.html", {"request": request})
+
     @app.on_event("startup")
     async def startup_event():
         """应用启动事件"""
