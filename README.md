@@ -88,7 +88,18 @@ python webui.py --host 0.0.0.0 --port 8080
 
 # 调试模式（热重载）
 python webui.py --debug
+
+# 设置 Web UI 访问密钥
+python webui.py --access-password mypassword
+
+# 组合参数
+python webui.py --host 0.0.0.0 --port 8080 --access-password mypassword
 ```
+
+> `--access-password` 优先级高于数据库中保存的密钥设置，每次启动时生效。打包后的 exe 同样支持此参数：
+> ```bash
+> codex-register.exe --access-password mypassword
+> ```
 
 ### 使用远程 PostgreSQL
 

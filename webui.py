@@ -99,6 +99,7 @@ def main():
     parser.add_argument("--debug", action="store_true", help="启用调试模式")
     parser.add_argument("--reload", action="store_true", help="启用热重载")
     parser.add_argument("--log-level", help="日志级别")
+    parser.add_argument("--access-password", help="Web UI 访问密钥")
     args = parser.parse_args()
 
     # 更新配置
@@ -113,6 +114,8 @@ def main():
         updates["debug"] = args.debug
     if args.log_level:
         updates["log_level"] = args.log_level
+    if args.access_password:
+        updates["webui_access_password"] = args.access_password
 
     if updates:
         update_settings(**updates)

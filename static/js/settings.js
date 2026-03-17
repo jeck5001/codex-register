@@ -239,6 +239,7 @@ function initEventListeners() {
 
     if (elements.webuiSettingsForm) {
         elements.webuiSettingsForm.addEventListener('submit', handleSaveWebuiSettings);
+    }
     // Team Manager 设置
     if (elements.tmForm) {
         elements.tmForm.addEventListener('submit', handleSaveTm);
