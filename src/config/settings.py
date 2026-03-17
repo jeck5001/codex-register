@@ -535,6 +535,18 @@ def _load_settings_from_db() -> Dict[str, Any]:
             env_url = os.environ.get("APP_DATABASE_URL") or os.environ.get("DATABASE_URL")
             if env_url:
                 settings_dict["database_url"] = _normalize_database_url(env_url)
+            env_host = os.environ.get("APP_HOST")
+            if env_host:
+                settings_dict["webui_host"] = env_host
+            env_port = os.environ.get("APP_PORT")
+            if env_port:
+                try:
+                    settings_dict["webui_port"] = int(env_port)
+                except ValueError:
+                    pass
+            env_password = os.environ.get("APP_ACCESS_PASSWORD")
+            if env_password:
+                settings_dict["webui_access_password"] = env_password
         return settings_dict
     except Exception as e:
         print(f"[Settings] 从数据库加载设置失败: {e}，使用默认值")

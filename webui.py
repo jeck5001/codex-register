@@ -24,8 +24,28 @@ from src.database.init_db import initialize_database
 from src.config.settings import get_settings
 
 
+def _load_dotenv():
+    """加载 .env 文件（可执行文件同目录或项目根目录）"""
+    env_path = project_root / ".env"
+    if not env_path.exists():
+        return
+    with open(env_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
 def setup_application():
     """设置应用程序"""
+    # 加载 .env 文件（优先级低于已有环境变量）
+    _load_dotenv()
+
     # 确保数据目录和日志目录在可执行文件所在目录（打包后也适用）
     data_dir = project_root / "data"
     logs_dir = project_root / "logs"

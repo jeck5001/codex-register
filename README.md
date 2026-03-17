@@ -77,6 +77,23 @@ uv sync
 pip install -r requirements.txt
 ```
 
+### 环境变量配置（可选）
+
+复制 `.env.example` 为 `.env`，按需填写：
+
+```bash
+cp .env.example .env
+```
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `APP_HOST` | 监听主机 | `0.0.0.0` |
+| `APP_PORT` | 监听端口 | `8000` |
+| `APP_ACCESS_PASSWORD` | Web UI 访问密钥 | `admin123` |
+| `APP_DATABASE_URL` | 数据库连接字符串 | `data/database.db` |
+
+> 优先级：命令行参数 > 环境变量（`.env`）> 数据库设置 > 默认值
+
 ### 启动 Web UI
 
 ```bash
