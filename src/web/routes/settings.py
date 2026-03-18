@@ -3,14 +3,15 @@
 """
 
 import logging
-from typing import Optional, Dict, Any, List
+import os
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from ...config.settings import get_settings, update_settings
 from ...database import crud
 from ...database.session import get_db
-from ...config.settings import get_settings, update_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -289,6 +290,7 @@ async def backup_database():
         raise HTTPException(status_code=404, detail="数据库文件不存在")
 
     # 创建备份目录
+    from fastapi import Path
     backup_dir = Path(db_path).parent / "backups"
     backup_dir.mkdir(exist_ok=True)
 

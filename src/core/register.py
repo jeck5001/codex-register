@@ -15,7 +15,7 @@ from datetime import datetime
 
 from curl_cffi import requests as cffi_requests
 
-from .oauth import OAuthManager, OAuthStart
+from .openai.oauth import OAuthManager, OAuthStart
 from .http_client import OpenAIHTTPClient, HTTPClientError
 from ..services import EmailServiceFactory, BaseEmailService, EmailServiceType
 from ..database import crud

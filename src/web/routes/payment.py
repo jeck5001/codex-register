@@ -14,13 +14,13 @@ from ...database.models import Account
 from ...database import crud
 from ...config.settings import get_settings
 from .accounts import resolve_account_ids
-from ...core.payment import (
+from ...core.openai.payment import (
     generate_plus_link,
     generate_team_link,
     open_url_incognito,
     check_subscription_status,
 )
-from ...core.team_manager import (
+from ...core.upload.team_manager_upload import (
     upload_to_team_manager,
     batch_upload_to_team_manager,
 )

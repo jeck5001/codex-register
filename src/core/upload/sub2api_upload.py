@@ -10,8 +10,8 @@ from typing import List, Tuple, Optional
 
 from curl_cffi import requests as cffi_requests
 
-from ..database.session import get_db
-from ..database.models import Account
+from ...database.session import get_db
+from ...database.models import Account
 
 logger = logging.getLogger(__name__)
 

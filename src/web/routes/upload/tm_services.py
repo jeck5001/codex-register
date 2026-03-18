@@ -6,9 +6,9 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ...database import crud
-from ...database.session import get_db
-from ...core.team_manager import test_team_manager_connection
+from ....database import crud
+from ....database.session import get_db
+from ....core.upload.team_manager_upload import test_team_manager_connection
 
 router = APIRouter()
 

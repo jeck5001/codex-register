@@ -9,9 +9,9 @@ from datetime import datetime
 
 from curl_cffi import requests as cffi_requests
 
-from ..database.session import get_db
-from ..database.models import Account
-from ..config.settings import get_settings
+from ...database.session import get_db
+from ...database.models import Account
+from ...config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

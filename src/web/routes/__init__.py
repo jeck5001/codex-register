@@ -7,11 +7,11 @@ from fastapi import APIRouter
 from .accounts import router as accounts_router
 from .registration import router as registration_router
 from .settings import router as settings_router
-from .email_services import router as email_services_router
+from .email import router as email_services_router
 from .payment import router as payment_router
-from .cpa_services import router as cpa_services_router
-from .sub2api_services import router as sub2api_services_router
-from .tm_services import router as tm_services_router
+from .upload.cpa_services import router as cpa_services_router
+from .upload.sub2api_services import router as sub2api_services_router
+from .upload.tm_services import router as tm_services_router
 
 api_router = APIRouter()
 
