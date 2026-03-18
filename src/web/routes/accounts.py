@@ -700,6 +700,7 @@ async def batch_validate_tokens(request: BatchValidateRequest):
 class CPAUploadRequest(BaseModel):
     """CPA 上传请求"""
     proxy: Optional[str] = None
+    cpa_service_id: Optional[int] = None  # 指定 CPA 服务 ID，不传则使用全局配置
 
 
 class BatchCPAUploadRequest(BaseModel):
@@ -710,6 +711,7 @@ class BatchCPAUploadRequest(BaseModel):
     status_filter: Optional[str] = None
     email_service_filter: Optional[str] = None
     search_filter: Optional[str] = None
+    cpa_service_id: Optional[int] = None  # 指定 CPA 服务 ID，不传则使用全局配置
 
 
 @router.post("/{account_id}/upload-cpa")
@@ -717,8 +719,19 @@ async def upload_account_to_cpa(account_id: int, request: CPAUploadRequest = Non
     """上传单个账号到 CPA"""
     from ...core.cpa_upload import upload_to_cpa, generate_token_json
 
-    # 使用传入的代理或全局代理配置
     proxy = request.proxy if request and request.proxy else get_settings().proxy_url
+    cpa_service_id = request.cpa_service_id if request else None
+
+    # 解析指定的 CPA 服务
+    cpa_api_url = None
+    cpa_api_token = None
+    if cpa_service_id:
+        with get_db() as db:
+            svc = crud.get_cpa_service_by_id(db, cpa_service_id)
+            if not svc:
+                raise HTTPException(status_code=404, detail="指定的 CPA 服务不存在")
+            cpa_api_url = svc.api_url
+            cpa_api_token = svc.api_token
 
     with get_db() as db:
         account = crud.get_account_by_id(db, account_id)
@@ -735,23 +748,15 @@ async def upload_account_to_cpa(account_id: int, request: CPAUploadRequest = Non
         token_data = generate_token_json(account)
 
         # 上传
-        success, message = upload_to_cpa(token_data, proxy)
+        success, message = upload_to_cpa(token_data, proxy, api_url=cpa_api_url, api_token=cpa_api_token)
 
         if success:
-            # 更新数据库状态
             account.cpa_uploaded = True
             account.cpa_uploaded_at = datetime.utcnow()
             db.commit()
-
-            return {
-                "success": True,
-                "message": message
-            }
+            return {"success": True, "message": message}
         else:
-            return {
-                "success": False,
-                "error": message
-            }
+            return {"success": False, "error": message}
 
 
 @router.post("/batch-upload-cpa")
@@ -759,8 +764,18 @@ async def batch_upload_accounts_to_cpa(request: BatchCPAUploadRequest):
     """批量上传账号到 CPA"""
     from ...core.cpa_upload import batch_upload_to_cpa
 
-    # 使用传入的代理或全局代理配置
     proxy = request.proxy if request.proxy else get_settings().proxy_url
+
+    # 解析指定的 CPA 服务
+    cpa_api_url = None
+    cpa_api_token = None
+    if request.cpa_service_id:
+        with get_db() as db:
+            svc = crud.get_cpa_service_by_id(db, request.cpa_service_id)
+            if not svc:
+                raise HTTPException(status_code=404, detail="指定的 CPA 服务不存在")
+            cpa_api_url = svc.api_url
+            cpa_api_token = svc.api_token
 
     with get_db() as db:
         ids = resolve_account_ids(
@@ -768,6 +783,5 @@ async def batch_upload_accounts_to_cpa(request: BatchCPAUploadRequest):
             request.status_filter, request.email_service_filter, request.search_filter
         )
 
-    results = batch_upload_to_cpa(ids, proxy)
-
+    results = batch_upload_to_cpa(ids, proxy, api_url=cpa_api_url, api_token=cpa_api_token)
     return results

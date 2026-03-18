@@ -83,7 +83,9 @@ const elements = {
     concurrencyHint: document.getElementById('concurrency-hint'),
     intervalGroup: document.getElementById('interval-group'),
     // 注册后自动操作
-    autoUploadCpa: document.getElementById('auto-upload-cpa')
+    autoUploadCpa: document.getElementById('auto-upload-cpa'),
+    cpaServiceSelectGroup: document.getElementById('cpa-service-select-group'),
+    cpaServiceSelect: document.getElementById('cpa-service-select')
 };
 
 // 初始化
@@ -97,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkCpaEnabled();
 });
 
-// 检查 CPA 是否启用，未启用则禁用复选框
+// 检查 CPA 是否启用，未启用则禁用复选框；同时加载 CPA 服务列表
 async function checkCpaEnabled() {
     if (!elements.autoUploadCpa) return;
     try {
@@ -110,6 +112,32 @@ async function checkCpaEnabled() {
         }
     } catch (e) {
         elements.autoUploadCpa.disabled = true;
+    }
+    // 加载 CPA 服务列表
+    await loadCpaServiceOptions();
+    // 复选框联动显示/隐藏服务选择器
+    if (elements.autoUploadCpa) {
+        elements.autoUploadCpa.addEventListener('change', () => {
+            if (elements.cpaServiceSelectGroup) {
+                elements.cpaServiceSelectGroup.style.display =
+                    elements.autoUploadCpa.checked ? 'block' : 'none';
+            }
+        });
+    }
+}
+
+async function loadCpaServiceOptions() {
+    if (!elements.cpaServiceSelect) return;
+    try {
+        const services = await api.get('/cpa-services?enabled=true');
+        // 保留「使用全局配置」选项
+        const defaultOpt = '<option value="">使用全局配置</option>';
+        const opts = services.map(s =>
+            `<option value="${s.id}">${s.name.replace(/</g,'&lt;')}</option>`
+        ).join('');
+        elements.cpaServiceSelect.innerHTML = defaultOpt + opts;
+    } catch (e) {
+        // 加载失败静默处理，保持默认选项
     }
 }
 
@@ -357,6 +385,10 @@ async function handleStartRegistration(e) {
         email_service_type: emailServiceType,
         auto_upload_cpa: elements.autoUploadCpa ? elements.autoUploadCpa.checked : false
     };
+    // 带上指定 CPA 服务
+    if (requestData.auto_upload_cpa && elements.cpaServiceSelect && elements.cpaServiceSelect.value) {
+        requestData.cpa_service_id = parseInt(elements.cpaServiceSelect.value);
+    }
 
     // 如果选择了数据库中的服务，传递 service_id
     if (serviceId && serviceId !== 'default') {

@@ -112,6 +112,9 @@ class DatabaseSessionManager:
             ("accounts", "cookies", "TEXT"),
         ]
 
+        # 确保新表存在（create_tables 已处理，此处兜底）
+        Base.metadata.create_all(bind=self.engine)
+
         with self.engine.connect() as conn:
             for table_name, column_name, column_type in migrations:
                 try:

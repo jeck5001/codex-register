@@ -261,7 +261,7 @@
                 <div class="card">
                     <div class="card-header">
                         <h3>CPA 上传配置</h3>
-                        <span class="hint">配置 Codex Protocol API 上传功能</span>
+                        <span class="hint">配置 CliProxyApi 上传功能</span>
                     </div>
                     <div class="card-body">
                         <form id="cpa-form">
@@ -288,6 +288,77 @@
                             <div class="form-actions">
                                 <button type="submit" class="btn btn-primary">💾 保存设置</button>
                                 <button type="button" class="btn btn-secondary" id="test-cpa-btn">🔌 测试连接</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- CPA 服务管理 -->
+                <div class="card" style="margin-top: 16px;">
+                    <div class="card-header">
+                        <h3>CPA 服务管理</h3>
+                        <button class="btn btn-primary btn-sm" id="add-cpa-service-btn">+ 添加服务</button>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>名称</th>
+                                        <th>API URL</th>
+                                        <th style="width:80px;">状态</th>
+                                        <th style="width:60px;">优先级</th>
+                                        <th style="width:160px;">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cpa-services-table">
+                                    <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CPA 服务编辑模态框 -->
+            <div class="modal" id="cpa-service-edit-modal">
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h3 id="cpa-service-modal-title">添加 CPA 服务</h3>
+                        <button class="modal-close" id="close-cpa-service-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="cpa-service-form">
+                            <input type="hidden" id="cpa-service-id">
+                            <div class="form-group">
+                                <label for="cpa-service-name">名称 *</label>
+                                <input type="text" id="cpa-service-name" placeholder="例如: 主服务" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="cpa-service-url">API URL *</label>
+                                <input type="text" id="cpa-service-url" placeholder="https://cpa.example.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="cpa-service-token">API Token</label>
+                                <input type="password" id="cpa-service-token" placeholder="编辑时留空则保持原值" autocomplete="new-password">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="cpa-service-priority">优先级</label>
+                                    <input type="number" id="cpa-service-priority" value="0" min="0">
+                                    <p class="hint">数字越小优先级越高</p>
+                                </div>
+                                <div class="form-group">
+                                    <label>&nbsp;</label>
+                                    <label style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+                                        <input type="checkbox" id="cpa-service-enabled" checked> 启用
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">💾 保存</button>
+                                <button type="button" class="btn btn-secondary" id="test-cpa-service-btn">🔌 测试连接</button>
+                                <button type="button" class="btn btn-secondary" id="cancel-cpa-service-btn">取消</button>
                             </div>
                         </form>
                     </div>

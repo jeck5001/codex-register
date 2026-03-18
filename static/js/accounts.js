@@ -740,11 +740,86 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// ============== CPA 服务选择 ==============
+
+// 弹出 CPA 服务选择框，返回 Promise<{cpa_service_id: number|null}|null>
+// null 表示用户取消，{cpa_service_id: null} 表示使用全局配置
+function selectCpaService() {
+    return new Promise(async (resolve) => {
+        const modal = document.getElementById('cpa-service-modal');
+        const listEl = document.getElementById('cpa-service-list');
+        const closeBtn = document.getElementById('close-cpa-modal');
+        const cancelBtn = document.getElementById('cancel-cpa-modal-btn');
+        const globalBtn = document.getElementById('cpa-use-global-btn');
+
+        // 加载服务列表
+        listEl.innerHTML = '<div style="text-align:center;color:var(--text-muted)">加载中...</div>';
+        modal.classList.add('active');
+
+        let services = [];
+        try {
+            services = await api.get('/cpa-services?enabled=true');
+        } catch (e) {
+            services = [];
+        }
+
+        if (services.length === 0) {
+            listEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:12px;">暂无已启用的 CPA 服务，将使用全局配置</div>';
+        } else {
+            listEl.innerHTML = services.map(s => `
+                <div class="cpa-service-item" data-id="${s.id}" style="
+                    padding: 10px 14px;
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                    cursor: pointer;
+                    transition: background 0.15s;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                ">
+                    <div>
+                        <div style="font-weight:500;">${escapeHtml(s.name)}</div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);">${escapeHtml(s.api_url)}</div>
+                    </div>
+                    <span class="badge" style="background:var(--success-color);color:#fff;font-size:0.7rem;padding:2px 8px;border-radius:10px;">选择</span>
+                </div>
+            `).join('');
+
+            listEl.querySelectorAll('.cpa-service-item').forEach(item => {
+                item.addEventListener('mouseenter', () => item.style.background = 'var(--surface-hover)');
+                item.addEventListener('mouseleave', () => item.style.background = '');
+                item.addEventListener('click', () => {
+                    cleanup();
+                    resolve({ cpa_service_id: parseInt(item.dataset.id) });
+                });
+            });
+        }
+
+        function cleanup() {
+            modal.classList.remove('active');
+            closeBtn.removeEventListener('click', onCancel);
+            cancelBtn.removeEventListener('click', onCancel);
+            globalBtn.removeEventListener('click', onGlobal);
+        }
+        function onCancel() { cleanup(); resolve(null); }
+        function onGlobal() { cleanup(); resolve({ cpa_service_id: null }); }
+
+        closeBtn.addEventListener('click', onCancel);
+        cancelBtn.addEventListener('click', onCancel);
+        globalBtn.addEventListener('click', onGlobal);
+    });
+}
+
 // 上传单个账号到CPA
 async function uploadToCpa(id) {
+    const choice = await selectCpaService();
+    if (choice === null) return;  // 用户取消
+
     try {
         toast.info('正在上传到CPA...');
-        const result = await api.post(`/accounts/${id}/upload-cpa`);
+        const payload = {};
+        if (choice.cpa_service_id != null) payload.cpa_service_id = choice.cpa_service_id;
+        const result = await api.post(`/accounts/${id}/upload-cpa`, payload);
 
         if (result.success) {
             toast.success('上传成功');
@@ -762,6 +837,9 @@ async function handleBatchUploadCpa() {
     const count = getEffectiveCount();
     if (count === 0) return;
 
+    const choice = await selectCpaService();
+    if (choice === null) return;  // 用户取消
+
     const confirmed = await confirm(`确定要将选中的 ${count} 个账号上传到CPA吗？`);
     if (!confirmed) return;
 
@@ -769,15 +847,13 @@ async function handleBatchUploadCpa() {
     elements.batchUploadCpaBtn.textContent = '上传中...';
 
     try {
-        const result = await api.post('/accounts/batch-upload-cpa', buildBatchPayload());
+        const payload = buildBatchPayload();
+        if (choice.cpa_service_id != null) payload.cpa_service_id = choice.cpa_service_id;
+        const result = await api.post('/accounts/batch-upload-cpa', payload);
 
         let message = `成功: ${result.success_count}`;
-        if (result.failed_count > 0) {
-            message += `, 失败: ${result.failed_count}`;
-        }
-        if (result.skipped_count > 0) {
-            message += `, 跳过: ${result.skipped_count}`;
-        }
+        if (result.failed_count > 0) message += `, 失败: ${result.failed_count}`;
+        if (result.skipped_count > 0) message += `, 跳过: ${result.skipped_count}`;
 
         toast.success(message);
         loadAccounts();

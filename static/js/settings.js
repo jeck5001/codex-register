@@ -44,6 +44,15 @@ const elements = {
     // CPA 设置
     cpaForm: document.getElementById('cpa-form'),
     testCpaBtn: document.getElementById('test-cpa-btn'),
+    // CPA 服务管理
+    addCpaServiceBtn: document.getElementById('add-cpa-service-btn'),
+    cpaServicesTable: document.getElementById('cpa-services-table'),
+    cpaServiceEditModal: document.getElementById('cpa-service-edit-modal'),
+    closeCpaServiceModal: document.getElementById('close-cpa-service-modal'),
+    cancelCpaServiceBtn: document.getElementById('cancel-cpa-service-btn'),
+    cpaServiceForm: document.getElementById('cpa-service-form'),
+    cpaServiceModalTitle: document.getElementById('cpa-service-modal-title'),
+    testCpaServiceBtn: document.getElementById('test-cpa-service-btn'),
     // Team Manager 设置
     tmForm: document.getElementById('tm-form'),
     testTmBtn: document.getElementById('test-tm-btn'),
@@ -65,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadEmailServices();
     loadDatabaseInfo();
     loadProxies();
+    loadCpaServices();
     initEventListeners();
 });
 
@@ -246,6 +256,28 @@ function initEventListeners() {
     }
     if (elements.testTmBtn) {
         elements.testTmBtn.addEventListener('click', handleTestTm);
+    }
+
+    // CPA 服务管理
+    if (elements.addCpaServiceBtn) {
+        elements.addCpaServiceBtn.addEventListener('click', () => openCpaServiceModal());
+    }
+    if (elements.closeCpaServiceModal) {
+        elements.closeCpaServiceModal.addEventListener('click', closeCpaServiceModal);
+    }
+    if (elements.cancelCpaServiceBtn) {
+        elements.cancelCpaServiceBtn.addEventListener('click', closeCpaServiceModal);
+    }
+    if (elements.cpaServiceEditModal) {
+        elements.cpaServiceEditModal.addEventListener('click', (e) => {
+            if (e.target === elements.cpaServiceEditModal) closeCpaServiceModal();
+        });
+    }
+    if (elements.cpaServiceForm) {
+        elements.cpaServiceForm.addEventListener('submit', handleSaveCpaService);
+    }
+    if (elements.testCpaServiceBtn) {
+        elements.testCpaServiceBtn.addEventListener('click', handleTestCpaService);
     }
 }
 
@@ -1181,4 +1213,173 @@ async function handleTestTm() {
         elements.testTmBtn.disabled = false;
         elements.testTmBtn.textContent = '🔌 测试连接';
     }
+}
+
+
+// ============== CPA 服务管理 ==============
+
+async function loadCpaServices() {
+    if (!elements.cpaServicesTable) return;
+    try {
+        const services = await api.get('/cpa-services');
+        renderCpaServicesTable(services);
+    } catch (e) {
+        elements.cpaServicesTable.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--danger-color);">${e.message}</td></tr>`;
+    }
+}
+
+function renderCpaServicesTable(services) {
+    if (!services || services.length === 0) {
+        elements.cpaServicesTable.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">暂无 CPA 服务，点击「添加服务」新增</td></tr>';
+        return;
+    }
+    elements.cpaServicesTable.innerHTML = services.map(s => `
+        <tr>
+            <td>${escapeHtml(s.name)}</td>
+            <td style="font-size:0.85rem;color:var(--text-muted);">${escapeHtml(s.api_url)}</td>
+            <td>
+                <span class="badge" style="background:${s.enabled ? 'var(--success-color)' : 'var(--border)'};color:${s.enabled ? '#fff' : 'var(--text-muted)'};font-size:0.75rem;padding:2px 8px;border-radius:10px;">
+                    ${s.enabled ? '启用' : '禁用'}
+                </span>
+            </td>
+            <td style="text-align:center;">${s.priority}</td>
+            <td>
+                <button class="btn btn-secondary btn-sm" onclick="editCpaService(${s.id})">编辑</button>
+                <button class="btn btn-secondary btn-sm" onclick="testCpaServiceById(${s.id})">测试</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteCpaService(${s.id}, '${escapeHtml(s.name)}')">删除</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function openCpaServiceModal(service = null) {
+    document.getElementById('cpa-service-id').value = service ? service.id : '';
+    document.getElementById('cpa-service-name').value = service ? service.name : '';
+    document.getElementById('cpa-service-url').value = service ? service.api_url : '';
+    document.getElementById('cpa-service-token').value = '';
+    document.getElementById('cpa-service-priority').value = service ? service.priority : 0;
+    document.getElementById('cpa-service-enabled').checked = service ? service.enabled : true;
+    elements.cpaServiceModalTitle.textContent = service ? '编辑 CPA 服务' : '添加 CPA 服务';
+    elements.cpaServiceEditModal.classList.add('active');
+}
+
+function closeCpaServiceModal() {
+    elements.cpaServiceEditModal.classList.remove('active');
+}
+
+async function editCpaService(id) {
+    try {
+        const service = await api.get(`/cpa-services/${id}`);
+        openCpaServiceModal(service);
+    } catch (e) {
+        toast.error('获取服务信息失败: ' + e.message);
+    }
+}
+
+async function handleSaveCpaService(e) {
+    e.preventDefault();
+    const id = document.getElementById('cpa-service-id').value;
+    const name = document.getElementById('cpa-service-name').value.trim();
+    const apiUrl = document.getElementById('cpa-service-url').value.trim();
+    const apiToken = document.getElementById('cpa-service-token').value.trim();
+    const priority = parseInt(document.getElementById('cpa-service-priority').value) || 0;
+    const enabled = document.getElementById('cpa-service-enabled').checked;
+
+    if (!name || !apiUrl) {
+        toast.error('名称和 API URL 不能为空');
+        return;
+    }
+    if (!id && !apiToken) {
+        toast.error('新增服务时 API Token 不能为空');
+        return;
+    }
+
+    try {
+        const payload = { name, api_url: apiUrl, priority, enabled };
+        if (apiToken) payload.api_token = apiToken;
+
+        if (id) {
+            await api.patch(`/cpa-services/${id}`, payload);
+            toast.success('服务已更新');
+        } else {
+            payload.api_token = apiToken;
+            await api.post('/cpa-services', payload);
+            toast.success('服务已添加');
+        }
+        closeCpaServiceModal();
+        loadCpaServices();
+    } catch (e) {
+        toast.error('保存失败: ' + e.message);
+    }
+}
+
+async function deleteCpaService(id, name) {
+    const confirmed = await confirm(`确定要删除 CPA 服务「${name}」吗？`);
+    if (!confirmed) return;
+    try {
+        await api.delete(`/cpa-services/${id}`);
+        toast.success('已删除');
+        loadCpaServices();
+    } catch (e) {
+        toast.error('删除失败: ' + e.message);
+    }
+}
+
+async function testCpaServiceById(id) {
+    try {
+        const result = await api.post(`/cpa-services/${id}/test`);
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+    } catch (e) {
+        toast.error('测试失败: ' + e.message);
+    }
+}
+
+async function handleTestCpaService() {
+    const apiUrl = document.getElementById('cpa-service-url').value.trim();
+    const apiToken = document.getElementById('cpa-service-token').value.trim();
+    const id = document.getElementById('cpa-service-id').value;
+
+    if (!apiUrl) {
+        toast.error('请先填写 API URL');
+        return;
+    }
+    // 新增时必须有 token，编辑时 token 可为空（用已保存的）
+    if (!id && !apiToken) {
+        toast.error('请先填写 API Token');
+        return;
+    }
+
+    elements.testCpaServiceBtn.disabled = true;
+    elements.testCpaServiceBtn.textContent = '测试中...';
+
+    try {
+        let result;
+        if (id && !apiToken) {
+            // 编辑时未填 token，直接测试已保存的服务
+            result = await api.post(`/cpa-services/${id}/test`);
+        } else {
+            result = await api.post('/cpa-services/test-connection', { api_url: apiUrl, api_token: apiToken });
+        }
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+    } catch (e) {
+        toast.error('测试失败: ' + e.message);
+    } finally {
+        elements.testCpaServiceBtn.disabled = false;
+        elements.testCpaServiceBtn.textContent = '🔌 测试连接';
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
 }

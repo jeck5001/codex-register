@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func
 
-from .models import Account, EmailService, RegistrationTask, Setting, Proxy
+from .models import Account, EmailService, RegistrationTask, Setting, Proxy, CpaService
 
 
 # ============================================================================
@@ -498,3 +498,72 @@ def get_proxies_count(db: Session, enabled: Optional[bool] = None) -> int:
     if enabled is not None:
         query = query.filter(Proxy.enabled == enabled)
     return query.scalar()
+
+
+# ============================================================================
+# CPA 服务 CRUD
+# ============================================================================
+
+def create_cpa_service(
+    db: Session,
+    name: str,
+    api_url: str,
+    api_token: str,
+    enabled: bool = True,
+    priority: int = 0
+) -> CpaService:
+    """创建 CPA 服务配置"""
+    db_service = CpaService(
+        name=name,
+        api_url=api_url,
+        api_token=api_token,
+        enabled=enabled,
+        priority=priority
+    )
+    db.add(db_service)
+    db.commit()
+    db.refresh(db_service)
+    return db_service
+
+
+def get_cpa_service_by_id(db: Session, service_id: int) -> Optional[CpaService]:
+    """根据 ID 获取 CPA 服务"""
+    return db.query(CpaService).filter(CpaService.id == service_id).first()
+
+
+def get_cpa_services(
+    db: Session,
+    enabled: Optional[bool] = None
+) -> List[CpaService]:
+    """获取 CPA 服务列表"""
+    query = db.query(CpaService)
+    if enabled is not None:
+        query = query.filter(CpaService.enabled == enabled)
+    return query.order_by(asc(CpaService.priority), asc(CpaService.id)).all()
+
+
+def update_cpa_service(
+    db: Session,
+    service_id: int,
+    **kwargs
+) -> Optional[CpaService]:
+    """更新 CPA 服务配置"""
+    db_service = get_cpa_service_by_id(db, service_id)
+    if not db_service:
+        return None
+    for key, value in kwargs.items():
+        if hasattr(db_service, key):
+            setattr(db_service, key, value)
+    db.commit()
+    db.refresh(db_service)
+    return db_service
+
+
+def delete_cpa_service(db: Session, service_id: int) -> bool:
+    """删除 CPA 服务配置"""
+    db_service = get_cpa_service_by_id(db, service_id)
+    if not db_service:
+        return False
+    db.delete(db_service)
+    db.commit()
+    return True
