@@ -125,18 +125,19 @@
                         <button class="btn btn-info" id="batch-validate-btn" disabled title="批量验证Token">
                             ✅ 验证Token
                         </button>
-                        <button class="btn btn-success" id="batch-upload-cpa-btn" disabled title="批量上传到CPA">
-                            ☁️ 上传CPA
-                        </button>
                         <button class="btn btn-info" id="batch-check-sub-btn" disabled title="批量检测订阅状态">
                             🔍 检测订阅
                         </button>
-                        <button class="btn btn-info" id="batch-upload-sub2api-btn" disabled title="批量上传到Sub2API">
-                            🔗 上传Sub2API
-                        </button>
-                        <button class="btn btn-success" id="batch-upload-tm-btn" disabled title="批量上传到Team Manager">
-                            🚀 上传TM
-                        </button>
+                        <div class="dropdown">
+                            <button class="btn btn-success" id="batch-upload-btn" disabled>
+                                ☁️ 上传
+                            </button>
+                            <div class="dropdown-menu" id="upload-menu">
+                                <a href="#" class="dropdown-item" id="batch-upload-cpa-item">☁️ 上传到 CPA</a>
+                                <a href="#" class="dropdown-item" id="batch-upload-sub2api-item">🔗 上传到 Sub2API</a>
+                                <a href="#" class="dropdown-item" id="batch-upload-tm-item">🚀 上传到 Team Manager</a>
+                            </div>
+                        </div>
                         <button class="btn btn-danger" id="batch-delete-btn" disabled>
                             🗑️ 批量删除
                         </button>
