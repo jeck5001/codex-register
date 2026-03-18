@@ -412,44 +412,40 @@ async def export_accounts_csv(request: BatchExportRequest):
 
 @router.post("/export/sub2api")
 async def export_accounts_sub2api(request: BatchExportRequest):
-    """导出账号为 Sub2Api 格式（每个账号单独一个 JSON 文件，多个打包为 ZIP）"""
-    import io
-    import zipfile
+    """导出账号为 Sub2Api 格式（所有选中账号合并到一个 JSON 的 accounts 数组中）"""
 
-    def make_sub2api_json(acc) -> dict:
+    def make_account_entry(acc) -> dict:
         expires_at = int(acc.expires_at.timestamp()) if acc.expires_at else 0
         return {
-            "proxies": [],
-            "accounts": [
-                {
-                    "name": acc.email,
-                    "platform": "openai",
-                    "type": "oauth",
-                    "credentials": {
-                        "access_token": acc.access_token or "",
-                        "chatgpt_account_id": acc.account_id or "",
-                        "chatgpt_user_id": "",
-                        "client_id": acc.client_id or "",
-                        "expires_at": expires_at,
-                        "expires_in": 863999,
-                        "model_mapping": {
-                            "gpt-5.1": "gpt-5.1",
-                            "gpt-5.1-codex": "gpt-5.1-codex",
-                            "gpt-5.1-codex-max": "gpt-5.1-codex-max",
-                            "gpt-5.1-codex-mini": "gpt-5.1-codex-mini",
-                            "gpt-5.2": "gpt-5.2",
-                            "gpt-5.2-codex": "gpt-5.2-codex"
-                        },
-                        "organization_id": acc.workspace_id or "",
-                        "refresh_token": acc.refresh_token or ""
-                    },
-                    "extra": {},
-                    "concurrency": 10,
-                    "priority": 1,
-                    "rate_multiplier": 1,
-                    "auto_pause_on_expired": True
-                }
-            ]
+            "name": acc.email,
+            "platform": "openai",
+            "type": "oauth",
+            "credentials": {
+                "access_token": acc.access_token or "",
+                "chatgpt_account_id": acc.account_id or "",
+                "chatgpt_user_id": "",
+                "client_id": acc.client_id or "",
+                "expires_at": expires_at,
+                "expires_in": 863999,
+                "model_mapping": {
+                    "gpt-5.1": "gpt-5.1",
+                    "gpt-5.1-codex": "gpt-5.1-codex",
+                    "gpt-5.1-codex-max": "gpt-5.1-codex-max",
+                    "gpt-5.1-codex-mini": "gpt-5.1-codex-mini",
+                    "gpt-5.2": "gpt-5.2",
+                    "gpt-5.2-codex": "gpt-5.2-codex",
+                    "gpt-5.3": "gpt-5.3",
+                    "gpt-5.3-codex": "gpt-5.3-codex",
+                    "gpt-5.4": "gpt-5.4"
+                },
+                "organization_id": acc.workspace_id or "",
+                "refresh_token": acc.refresh_token or ""
+            },
+            "extra": {},
+            "concurrency": 10,
+            "priority": 1,
+            "rate_multiplier": 1,
+            "auto_pause_on_expired": True
         }
 
     with get_db() as db:
@@ -460,29 +456,21 @@ async def export_accounts_sub2api(request: BatchExportRequest):
         accounts = db.query(Account).filter(Account.id.in_(ids)).all()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        payload = {
+            "proxies": [],
+            "accounts": [make_account_entry(acc) for acc in accounts]
+        }
+        content = json.dumps(payload, ensure_ascii=False, indent=2)
 
         if len(accounts) == 1:
-            acc = accounts[0]
-            content = json.dumps(make_sub2api_json(acc), ensure_ascii=False, indent=2)
-            filename = f"{acc.email}_sub2api.json"
-            return StreamingResponse(
-                iter([content]),
-                media_type="application/json",
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
-            )
+            filename = f"{accounts[0].email}_sub2api.json"
+        else:
+            filename = f"sub2api_tokens_{timestamp}.json"
 
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            for acc in accounts:
-                content = json.dumps(make_sub2api_json(acc), ensure_ascii=False, indent=2)
-                zf.writestr(f"{acc.email}_sub2api.json", content)
-
-        zip_buffer.seek(0)
-        zip_filename = f"sub2api_tokens_{timestamp}.zip"
         return StreamingResponse(
-            zip_buffer,
-            media_type="application/zip",
-            headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
+            iter([content]),
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
 
