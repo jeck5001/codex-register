@@ -785,3 +785,106 @@ async def batch_upload_accounts_to_cpa(request: BatchCPAUploadRequest):
 
     results = batch_upload_to_cpa(ids, proxy, api_url=cpa_api_url, api_token=cpa_api_token)
     return results
+
+
+class Sub2ApiUploadRequest(BaseModel):
+    """单账号 Sub2API 上传请求"""
+    service_id: Optional[int] = None
+    concurrency: int = 3
+    priority: int = 50
+
+
+@router.post("/{account_id}/upload-sub2api")
+async def upload_account_to_sub2api(account_id: int, request: Sub2ApiUploadRequest = None):
+    """上传单个账号到 Sub2API"""
+    from ...core.sub2api_upload import upload_to_sub2api
+
+    service_id = request.service_id if request else None
+    concurrency = request.concurrency if request else 3
+    priority = request.priority if request else 50
+
+    api_url = None
+    api_key = None
+    if service_id:
+        with get_db() as db:
+            svc = crud.get_sub2api_service_by_id(db, service_id)
+            if not svc:
+                raise HTTPException(status_code=404, detail="指定的 Sub2API 服务不存在")
+            api_url = svc.api_url
+            api_key = svc.api_key
+    else:
+        with get_db() as db:
+            svcs = crud.get_sub2api_services(db, enabled=True)
+            if svcs:
+                api_url = svcs[0].api_url
+                api_key = svcs[0].api_key
+
+    if not api_url or not api_key:
+        raise HTTPException(status_code=400, detail="未找到可用的 Sub2API 服务，请先在设置中配置")
+
+    with get_db() as db:
+        account = crud.get_account_by_id(db, account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="账号不存在")
+        if not account.access_token:
+            return {"success": False, "error": "账号缺少 Token，无法上传"}
+
+        success, message = upload_to_sub2api(
+            [account], api_url, api_key,
+            concurrency=concurrency, priority=priority
+        )
+        if success:
+            return {"success": True, "message": message}
+        else:
+            return {"success": False, "error": message}
+
+
+class BatchSub2ApiUploadRequest(BaseModel):
+    """批量 Sub2API 上传请求"""
+    ids: List[int] = []
+    select_all: bool = False
+    status_filter: Optional[str] = None
+    email_service_filter: Optional[str] = None
+    search_filter: Optional[str] = None
+    service_id: Optional[int] = None  # 指定 Sub2API 服务 ID，不传则使用第一个启用的
+    concurrency: int = 3
+    priority: int = 50
+
+
+@router.post("/batch-upload-sub2api")
+async def batch_upload_accounts_to_sub2api(request: BatchSub2ApiUploadRequest):
+    """批量上传账号到 Sub2API"""
+    from ...core.sub2api_upload import batch_upload_to_sub2api
+
+    # 解析指定的 Sub2API 服务
+    api_url = None
+    api_key = None
+    if request.service_id:
+        with get_db() as db:
+            svc = crud.get_sub2api_service_by_id(db, request.service_id)
+            if not svc:
+                raise HTTPException(status_code=404, detail="指定的 Sub2API 服务不存在")
+            api_url = svc.api_url
+            api_key = svc.api_key
+    else:
+        with get_db() as db:
+            svcs = crud.get_sub2api_services(db, enabled=True)
+            if svcs:
+                api_url = svcs[0].api_url
+                api_key = svcs[0].api_key
+
+    if not api_url or not api_key:
+        raise HTTPException(status_code=400, detail="未找到可用的 Sub2API 服务，请先在设置中配置")
+
+    with get_db() as db:
+        ids = resolve_account_ids(
+            db, request.ids, request.select_all,
+            request.status_filter, request.email_service_filter, request.search_filter
+        )
+
+    results = batch_upload_to_sub2api(
+        ids, api_url, api_key,
+        concurrency=request.concurrency,
+        priority=request.priority,
+    )
+    return results

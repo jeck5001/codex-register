@@ -160,6 +160,13 @@ def create_app() -> FastAPI:
     async def startup_event():
         """应用启动事件"""
         import asyncio
+        from ..database.init_db import initialize_database
+
+        # 确保数据库已初始化（reload 模式下子进程也需要初始化）
+        try:
+            initialize_database()
+        except Exception as e:
+            logger.warning(f"数据库初始化: {e}")
 
         # 设置 TaskManager 的事件循环
         loop = asyncio.get_event_loop()

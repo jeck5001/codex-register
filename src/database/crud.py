@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func
 
-from .models import Account, EmailService, RegistrationTask, Setting, Proxy, CpaService
+from .models import Account, EmailService, RegistrationTask, Setting, Proxy, CpaService, Sub2ApiService
 
 
 # ============================================================================
@@ -582,5 +582,133 @@ def delete_cpa_service(db: Session, service_id: int) -> bool:
     if not db_service:
         return False
     db.delete(db_service)
+    db.commit()
+    return True
+
+
+# ============================================================================
+# Sub2API 服务 CRUD
+# ============================================================================
+
+def create_sub2api_service(
+    db: Session,
+    name: str,
+    api_url: str,
+    api_key: str,
+    enabled: bool = True,
+    priority: int = 0
+) -> Sub2ApiService:
+    """创建 Sub2API 服务配置"""
+    svc = Sub2ApiService(
+        name=name,
+        api_url=api_url,
+        api_key=api_key,
+        enabled=enabled,
+        priority=priority,
+    )
+    db.add(svc)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+
+def get_sub2api_service_by_id(db: Session, service_id: int) -> Optional[Sub2ApiService]:
+    """按 ID 获取 Sub2API 服务"""
+    return db.query(Sub2ApiService).filter(Sub2ApiService.id == service_id).first()
+
+
+def get_sub2api_services(
+    db: Session,
+    enabled: Optional[bool] = None
+) -> List[Sub2ApiService]:
+    """获取 Sub2API 服务列表"""
+    query = db.query(Sub2ApiService)
+    if enabled is not None:
+        query = query.filter(Sub2ApiService.enabled == enabled)
+    return query.order_by(asc(Sub2ApiService.priority), asc(Sub2ApiService.id)).all()
+
+
+def update_sub2api_service(db: Session, service_id: int, **kwargs) -> Optional[Sub2ApiService]:
+    """更新 Sub2API 服务配置"""
+    svc = get_sub2api_service_by_id(db, service_id)
+    if not svc:
+        return None
+    for key, value in kwargs.items():
+        setattr(svc, key, value)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+
+def delete_sub2api_service(db: Session, service_id: int) -> bool:
+    """删除 Sub2API 服务配置"""
+    svc = get_sub2api_service_by_id(db, service_id)
+    if not svc:
+        return False
+    db.delete(svc)
+    db.commit()
+    return True
+
+
+# ============================================================================
+# Team Manager 服务 CRUD
+# ============================================================================
+
+def create_tm_service(
+    db: Session,
+    name: str,
+    api_url: str,
+    api_key: str,
+    enabled: bool = True,
+    priority: int = 0,
+):
+    """创建 Team Manager 服务配置"""
+    from .models import TeamManagerService
+    svc = TeamManagerService(
+        name=name,
+        api_url=api_url,
+        api_key=api_key,
+        enabled=enabled,
+        priority=priority,
+    )
+    db.add(svc)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+
+def get_tm_service_by_id(db: Session, service_id: int):
+    """按 ID 获取 Team Manager 服务"""
+    from .models import TeamManagerService
+    return db.query(TeamManagerService).filter(TeamManagerService.id == service_id).first()
+
+
+def get_tm_services(db: Session, enabled=None):
+    """获取 Team Manager 服务列表"""
+    from .models import TeamManagerService
+    q = db.query(TeamManagerService)
+    if enabled is not None:
+        q = q.filter(TeamManagerService.enabled == enabled)
+    return q.order_by(TeamManagerService.priority.asc(), TeamManagerService.id.asc()).all()
+
+
+def update_tm_service(db: Session, service_id: int, **kwargs):
+    """更新 Team Manager 服务配置"""
+    svc = get_tm_service_by_id(db, service_id)
+    if not svc:
+        return None
+    for k, v in kwargs.items():
+        setattr(svc, k, v)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+
+def delete_tm_service(db: Session, service_id: int) -> bool:
+    """删除 Team Manager 服务配置"""
+    svc = get_tm_service_by_id(db, service_id)
+    if not svc:
+        return False
+    db.delete(svc)
     db.commit()
     return True

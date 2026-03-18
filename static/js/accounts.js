@@ -25,9 +25,8 @@ const elements = {
     refreshBtn: document.getElementById('refresh-btn'),
     batchRefreshBtn: document.getElementById('batch-refresh-btn'),
     batchValidateBtn: document.getElementById('batch-validate-btn'),
-    batchUploadCpaBtn: document.getElementById('batch-upload-cpa-btn'),
+    batchUploadBtn: document.getElementById('batch-upload-btn'),
     batchCheckSubBtn: document.getElementById('batch-check-sub-btn'),
-    batchUploadTmBtn: document.getElementById('batch-upload-tm-btn'),
     batchDeleteBtn: document.getElementById('batch-delete-btn'),
     exportBtn: document.getElementById('export-btn'),
     exportMenu: document.getElementById('export-menu'),
@@ -94,14 +93,13 @@ function initEventListeners() {
     // 批量验证Token
     elements.batchValidateBtn.addEventListener('click', handleBatchValidate);
 
-    // 批量上传CPA
-    elements.batchUploadCpaBtn.addEventListener('click', handleBatchUploadCpa);
-
     // 批量检测订阅
     elements.batchCheckSubBtn.addEventListener('click', handleBatchCheckSubscription);
 
-    // 批量上传TM
-    elements.batchUploadTmBtn.addEventListener('click', handleBatchUploadTm);
+    // 上传下拉菜单
+    document.getElementById('batch-upload-cpa-item').addEventListener('click', (e) => { e.preventDefault(); handleBatchUploadCpa(); });
+    document.getElementById('batch-upload-sub2api-item').addEventListener('click', (e) => { e.preventDefault(); handleBatchUploadSub2Api(); });
+    document.getElementById('batch-upload-tm-item').addEventListener('click', (e) => { e.preventDefault(); handleBatchUploadTm(); });
 
     // 批量删除
     elements.batchDeleteBtn.addEventListener('click', handleBatchDelete);
@@ -320,14 +318,11 @@ function renderAccounts(accounts) {
                     <button class="btn btn-ghost btn-sm" onclick="refreshToken(${account.id})" title="刷新Token">
                         🔄
                     </button>
-                    <button class="btn btn-ghost btn-sm" onclick="uploadToCpa(${account.id})" title="上传到CPA">
+                    <button class="btn btn-ghost btn-sm" onclick="uploadAccount(${account.id})" title="上传账号">
                         ☁️
                     </button>
                     <button class="btn btn-ghost btn-sm" onclick="markSubscription(${account.id})" title="标记订阅">
                         🏷️
-                    </button>
-                    <button class="btn btn-ghost btn-sm" onclick="uploadToTm(${account.id})" title="上传到Team Manager">
-                        🚀
                     </button>
                     <button class="btn btn-ghost btn-sm" onclick="viewAccount(${account.id})" title="查看详情">
                         👁️
@@ -465,17 +460,15 @@ function updateBatchButtons() {
     elements.batchDeleteBtn.disabled = count === 0;
     elements.batchRefreshBtn.disabled = count === 0;
     elements.batchValidateBtn.disabled = count === 0;
-    elements.batchUploadCpaBtn.disabled = count === 0;
+    elements.batchUploadBtn.disabled = count === 0;
     elements.batchCheckSubBtn.disabled = count === 0;
-    elements.batchUploadTmBtn.disabled = count === 0;
     elements.exportBtn.disabled = count === 0;
 
     elements.batchDeleteBtn.textContent = count > 0 ? `🗑️ 删除 (${count})` : '🗑️ 批量删除';
     elements.batchRefreshBtn.textContent = count > 0 ? `🔄 刷新 (${count})` : '🔄 刷新Token';
     elements.batchValidateBtn.textContent = count > 0 ? `✅ 验证 (${count})` : '✅ 验证Token';
-    elements.batchUploadCpaBtn.textContent = count > 0 ? `☁️ 上传 (${count})` : '☁️ 上传CPA';
+    elements.batchUploadBtn.textContent = count > 0 ? `☁️ 上传 (${count})` : '☁️ 上传';
     elements.batchCheckSubBtn.textContent = count > 0 ? `🔍 检测 (${count})` : '🔍 检测订阅';
-    elements.batchUploadTmBtn.textContent = count > 0 ? `🚀 上传TM (${count})` : '🚀 上传TM';
 }
 
 // 刷新单个账号Token
@@ -810,6 +803,43 @@ function selectCpaService() {
     });
 }
 
+// 统一上传入口：弹出目标选择
+async function uploadAccount(id) {
+    const targets = [
+        { label: '☁️ 上传到 CPA', value: 'cpa' },
+        { label: '🔗 上传到 Sub2API', value: 'sub2api' },
+        { label: '🚀 上传到 Team Manager', value: 'tm' },
+    ];
+
+    const choice = await new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:360px;">
+                <div class="modal-header">
+                    <h3>☁️ 选择上传目标</h3>
+                    <button class="modal-close" id="_upload-close">&times;</button>
+                </div>
+                <div class="modal-body" style="display:flex;flex-direction:column;gap:8px;">
+                    ${targets.map(t => `
+                        <button class="btn btn-secondary" data-val="${t.value}" style="text-align:left;">${t.label}</button>
+                    `).join('')}
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+        modal.querySelector('#_upload-close').addEventListener('click', () => { modal.remove(); resolve(null); });
+        modal.addEventListener('click', (e) => { if (e.target === modal) { modal.remove(); resolve(null); } });
+        modal.querySelectorAll('button[data-val]').forEach(btn => {
+            btn.addEventListener('click', () => { modal.remove(); resolve(btn.dataset.val); });
+        });
+    });
+
+    if (!choice) return;
+    if (choice === 'cpa') return uploadToCpa(id);
+    if (choice === 'sub2api') return uploadToSub2Api(id);
+    if (choice === 'tm') return uploadToTm(id);
+}
+
 // 上传单个账号到CPA
 async function uploadToCpa(id) {
     const choice = await selectCpaService();
@@ -843,8 +873,8 @@ async function handleBatchUploadCpa() {
     const confirmed = await confirm(`确定要将选中的 ${count} 个账号上传到CPA吗？`);
     if (!confirmed) return;
 
-    elements.batchUploadCpaBtn.disabled = true;
-    elements.batchUploadCpaBtn.textContent = '上传中...';
+    elements.batchUploadBtn.disabled = true;
+    elements.batchUploadBtn.textContent = '上传中...';
 
     try {
         const payload = buildBatchPayload();
@@ -908,7 +938,128 @@ async function handleBatchCheckSubscription() {
     }
 }
 
+// ============== Sub2API 上传 ==============
+
+// 弹出 Sub2API 服务选择框，返回 Promise<{service_id: number|null}|null>
+// null 表示用户取消，{service_id: null} 表示自动选择
+function selectSub2ApiService() {
+    return new Promise(async (resolve) => {
+        const modal = document.getElementById('sub2api-service-modal');
+        const listEl = document.getElementById('sub2api-service-list');
+        const closeBtn = document.getElementById('close-sub2api-modal');
+        const cancelBtn = document.getElementById('cancel-sub2api-modal-btn');
+        const autoBtn = document.getElementById('sub2api-use-auto-btn');
+
+        listEl.innerHTML = '<div style="text-align:center;color:var(--text-muted)">加载中...</div>';
+        modal.classList.add('active');
+
+        let services = [];
+        try {
+            services = await api.get('/sub2api-services?enabled=true');
+        } catch (e) {
+            services = [];
+        }
+
+        if (services.length === 0) {
+            listEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:12px;">暂无已启用的 Sub2API 服务，将自动选择第一个</div>';
+        } else {
+            listEl.innerHTML = services.map(s => `
+                <div class="sub2api-service-item" data-id="${s.id}" style="
+                    padding: 10px 14px;
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                    cursor: pointer;
+                    transition: background 0.15s;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                ">
+                    <div>
+                        <div style="font-weight:500;">${escapeHtml(s.name)}</div>
+                        <div style="font-size:0.8rem;color:var(--text-muted);">${escapeHtml(s.api_url)}</div>
+                    </div>
+                    <span class="badge" style="background:var(--primary);color:#fff;font-size:0.7rem;padding:2px 8px;border-radius:10px;">选择</span>
+                </div>
+            `).join('');
+
+            listEl.querySelectorAll('.sub2api-service-item').forEach(item => {
+                item.addEventListener('mouseenter', () => item.style.background = 'var(--surface-hover)');
+                item.addEventListener('mouseleave', () => item.style.background = '');
+                item.addEventListener('click', () => {
+                    cleanup();
+                    resolve({ service_id: parseInt(item.dataset.id) });
+                });
+            });
+        }
+
+        function cleanup() {
+            modal.classList.remove('active');
+            closeBtn.removeEventListener('click', onCancel);
+            cancelBtn.removeEventListener('click', onCancel);
+            autoBtn.removeEventListener('click', onAuto);
+        }
+        function onCancel() { cleanup(); resolve(null); }
+        function onAuto() { cleanup(); resolve({ service_id: null }); }
+
+        closeBtn.addEventListener('click', onCancel);
+        cancelBtn.addEventListener('click', onCancel);
+        autoBtn.addEventListener('click', onAuto);
+    });
+}
+
+// 批量上传到 Sub2API
+async function handleBatchUploadSub2Api() {
+    const count = getEffectiveCount();
+    if (count === 0) return;
+
+    const choice = await selectSub2ApiService();
+    if (choice === null) return;  // 用户取消
+
+    const confirmed = await confirm(`确定要将选中的 ${count} 个账号上传到 Sub2API 吗？`);
+    if (!confirmed) return;
+
+    elements.batchUploadBtn.disabled = true;
+    elements.batchUploadBtn.textContent = '上传中...';
+
+    try {
+        const payload = buildBatchPayload();
+        if (choice.service_id != null) payload.service_id = choice.service_id;
+        const result = await api.post('/accounts/batch-upload-sub2api', payload);
+
+        let message = `成功: ${result.success_count}`;
+        if (result.failed_count > 0) message += `, 失败: ${result.failed_count}`;
+        if (result.skipped_count > 0) message += `, 跳过: ${result.skipped_count}`;
+
+        toast.success(message);
+        loadAccounts();
+    } catch (error) {
+        toast.error('批量上传失败: ' + error.message);
+    } finally {
+        updateBatchButtons();
+    }
+}
+
 // ============== Team Manager 上传 ==============
+
+// 上传单账号到 Sub2API
+async function uploadToSub2Api(id) {
+    const choice = await selectSub2ApiService();
+    if (choice === null) return;
+    try {
+        toast.info('正在上传到 Sub2API...');
+        const payload = {};
+        if (choice.service_id != null) payload.service_id = choice.service_id;
+        const result = await api.post(`/accounts/${id}/upload-sub2api`, payload);
+        if (result.success) {
+            toast.success('上传成功');
+            loadAccounts();
+        } else {
+            toast.error('上传失败: ' + (result.error || result.message || '未知错误'));
+        }
+    } catch (e) {
+        toast.error('上传失败: ' + e.message);
+    }
+}
 
 // 上传单账号到 Team Manager
 async function uploadToTm(id) {
@@ -932,8 +1083,8 @@ async function handleBatchUploadTm() {
     const confirmed = await confirm(`确定要将选中的 ${count} 个账号上传到 Team Manager 吗？`);
     if (!confirmed) return;
 
-    elements.batchUploadTmBtn.disabled = true;
-    elements.batchUploadTmBtn.textContent = '上传中...';
+    elements.batchUploadBtn.disabled = true;
+    elements.batchUploadBtn.textContent = '上传中...';
 
     try {
         const result = await api.post('/payment/accounts/batch-upload-tm', buildBatchPayload());
